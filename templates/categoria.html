@@ -5,10 +5,38 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Categoría</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .breadcrumb-modern {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .breadcrumb-modern .breadcrumb-item a {
+            color: #fff;
+            text-decoration: none;
+        }
+        .breadcrumb-modern .breadcrumb-item.active {
+            color: #ffd700;
+        }
+        .breadcrumb-modern .breadcrumb-item + .breadcrumb-item::before {
+            content: "\f105";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: #ffd700;
+        }
+    </style>
 </head>
 <body>
     <div class="container mt-5">
-        <h1>Categoría: {{ categoria.catalogo.codigo }} - {{ categoria.cod_categoria }}</h1>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-modern">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('configurar_catalogo', catalogo_id=categoria.catalogo_id) }}"><i class="fas fa-folder"></i> {{ categoria.catalogo.codigo }} - {{ categoria.catalogo.descripcion }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page"><i class="fas fa-tag"></i> {{ categoria.cod_categoria }}</li>
+            </ol>
+        </nav>
         <a href="{{ url_for('configurar_catalogo', catalogo_id=categoria.catalogo_id) }}" class="btn btn-secondary mb-3">Volver</a>
         <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir</button>
         <button class="btn btn-info mb-3" data-bs-toggle="modal" data-bs-target="#copyModal">Copiar</button>
@@ -27,7 +55,7 @@
                     <td>{{ subcategoria.descripcion }}</td>
                     <td>
                         <button class="btn btn-info btn-sm">Ver</button>
-                        <button class="btn btn-warning btn-sm">Configurar</button>
+                        <a href="{{ url_for('fichas', subcategoria_id=subcategoria.id) }}" class="btn btn-warning btn-sm">Configurar</a>
                         <a href="{{ url_for('delete_subcategoria', id=subcategoria.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
                     </td>
                 </tr>

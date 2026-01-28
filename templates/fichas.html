@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fichas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .breadcrumb-modern {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .breadcrumb-modern .breadcrumb-item a {
+            color: #fff;
+            text-decoration: none;
+        }
+        .breadcrumb-modern .breadcrumb-item.active {
+            color: #ffd700;
+        }
+        .breadcrumb-modern .breadcrumb-item + .breadcrumb-item::before {
+            content: "\f105";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: #ffd700;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-modern">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('configurar_catalogo', catalogo_id=subcategoria.categoria.catalogo_id) }}"><i class="fas fa-folder"></i> {{ subcategoria.categoria.catalogo.codigo }} - {{ subcategoria.categoria.catalogo.descripcion }}</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('categoria', categoria_id=subcategoria.categoria_id) }}"><i class="fas fa-tag"></i> {{ subcategoria.categoria.cod_categoria }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page"><i class="fas fa-image"></i> {{ subcategoria.cod_categoria }}</li>
+            </ol>
+        </nav>
+        <a href="{{ url_for('categoria', categoria_id=subcategoria.categoria_id) }}" class="btn btn-secondary mb-3">Volver</a>
+        <button class="btn btn-primary mb-3" onclick="window.location.href='{{ url_for('add_fila', subcategoria_id=subcategoria.id) }}'">
+            <i class="fas fa-plus"></i> Añadir Fila
+        </button>
+        
+        <!-- Contador de totales -->
+        <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle"></i> Total de productos: <strong>{{ total_general }}</strong>
+            {% for marca in marcas %}
+                | {{ marca }}: <strong>{{ totales_marca[marca] }}</strong>
+            {% endfor %}
+        </div>
+        
+        <div class="row mb-3 fw-bold">
+            <div class="col-1">Fila</div>
+            {% for marca in marcas %}
+            <div class="col">{{ marca }}</div>
+            {% endfor %}
+            <div class="col-1">Total</div>
+            <div class="col-1">Acciones</div>
+        </div>
+        {% for ficha in fichas %}
+        <div class="row mb-4">
+            <div class="col-1 d-flex align-items-center">
+                <strong>Fila {{ ficha.fila_numero }}</strong>
+            </div>
+            {% for marca in marcas %}
+            <div class="col">
+                {% set tarjeta = ficha.tarjetas | selectattr('marca', 'equalto', marca) | list | first %}
+                {% if tarjeta %}
+                <div class="card h-100">
+                    {% if tarjeta.imagen %}
+                    <img src="{{ tarjeta.imagen }}" class="card-img-top" alt="Imagen" style="max-height: 150px; object-fit: cover;">
+                    {% else %}
+                    <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 150px;">
+                        <i class="fas fa-image fa-3x text-muted"></i>
+                    </div>
+                    {% endif %}
+                    <div class="card-body p-2">
+                        <h6 class="card-title text-truncate" title="{{ tarjeta.nombre or 'N/A' }}">{{ tarjeta.nombre or 'N/A' }}</h6>
+                        <small class="text-muted d-block">{{ tarjeta.peso or 'N/A' }}</small>
+                        <div class="mt-2">
+                            <a href="{{ url_for('delete_tarjeta', id=tarjeta.id) }}" class="btn btn-danger btn-sm w-100" onclick="return confirm('¿Eliminar este producto?')">
+                                <i class="fas fa-trash"></i> Eliminar
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="card text-center h-100">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addModal" data-ficha="{{ ficha.id }}" data-marca="{{ marca }}">
+                            <i class="fas fa-plus"></i> Añadir
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="col d-flex align-items-center justify-content-center">
+                <span class="badge bg-primary">{{ ficha.tarjetas|length }}</span>
+            </div>
+            <div class="col-1 d-flex align-items-center">
+                <a href="{{ url_for('delete_fila', id=ficha.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar toda la fila?')">
+                    <i class="fas fa-trash"></i>
+                </a>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Modal para Añadir Tarjeta -->
+    <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addModalLabel">Añadir Producto</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addForm" method="POST">
+                <div class="modal-body">
+                    <input type="hidden" id="fichaId" name="ficha_id">
+                    <input type="hidden" id="marca" name="marca">
+                    <input type="hidden" id="producto_id" name="producto_id" required>
+                    
+                    <div class="mb-3">
+                        <label for="buscar_producto" class="form-label">Buscar Producto</label>
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" class="form-control" id="buscar_producto" placeholder="Buscar por SKU o título..." autocomplete="off">
+                        </div>
+                        <small class="text-muted">Escribe al menos 2 caracteres para buscar</small>
+                    </div>
+                    
+                    <div id="resultados_busqueda" class="list-group mb-3" style="max-height: 300px; overflow-y: auto; display: none;"></div>
+                    
+                    <div id="producto_seleccionado" class="alert alert-success" style="display: none;">
+                        <strong>Producto seleccionado:</strong>
+                        <div id="producto_info"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="btnAnadir" disabled>Añadir</button>
+                </div>
+            </form>
+        </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const addModal = document.getElementById('addModal');
+        let marcaActual = '';
+        
+        addModal.addEventListener('show.bs.modal', function (event) {
+            const button = event.relatedTarget;
+            const fichaId = button.getAttribute('data-ficha');
+            const marca = button.getAttribute('data-marca');
+            marcaActual = marca;
+            
+            document.getElementById('fichaId').value = fichaId;
+            document.getElementById('marca').value = marca;
+            document.getElementById('addForm').action = `/add_tarjeta/${fichaId}/${encodeURIComponent(marca)}`;
+            
+            // Resetear formulario
+            document.getElementById('buscar_producto').value = '';
+            document.getElementById('producto_id').value = '';
+            document.getElementById('resultados_busqueda').style.display = 'none';
+            document.getElementById('producto_seleccionado').style.display = 'none';
+            document.getElementById('btnAnadir').disabled = true;
+        });
+        
+        // Búsqueda de productos con debounce
+        let timeoutId;
+        document.getElementById('buscar_producto').addEventListener('input', function(e) {
+            clearTimeout(timeoutId);
+            const query = e.target.value.trim();
+            
+            if (query.length < 2) {
+                document.getElementById('resultados_busqueda').style.display = 'none';
+                return;
+            }
+            
+            timeoutId = setTimeout(() => {
+                fetch(`/buscar_productos_ajax?q=${encodeURIComponent(query)}&marca=${encodeURIComponent(marcaActual)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const resultados = document.getElementById('resultados_busqueda');
+                        resultados.innerHTML = '';
+                        
+                        if (data.productos.length === 0) {
+                            resultados.innerHTML = '<div class="list-group-item">No se encontraron productos</div>';
+                            resultados.style.display = 'block';
+                            return;
+                        }
+                        
+                        data.productos.forEach(p => {
+                            const item = document.createElement('a');
+                            item.href = '#';
+                            item.className = 'list-group-item list-group-item-action';
+                            item.innerHTML = `
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="me-auto">
+                                        <strong>${p.sku}</strong> - ${p.titulo || 'Sin título'}
+                                        <br><small class="text-muted">${p.marca} | ${p.dimensiones || ''} | ${p.color || ''}</small>
+                                    </div>
+                                </div>
+                            `;
+                            item.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                seleccionarProducto(p);
+                            });
+                            resultados.appendChild(item);
+                        });
+                        
+                        resultados.style.display = 'block';
+                    })
+                    .catch(err => console.error('Error en búsqueda:', err));
+            }, 300);
+        });
+        
+        function seleccionarProducto(producto) {
+            document.getElementById('producto_id').value = producto.id;
+            document.getElementById('producto_info').innerHTML = `
+                <strong>${producto.sku}</strong> - ${producto.titulo || 'Sin título'}<br>
+                <small>${producto.marca} | ${producto.dimensiones || 'N/A'} | ${producto.color || 'N/A'}</small>
+            `;
+            document.getElementById('producto_seleccionado').style.display = 'block';
+            document.getElementById('resultados_busqueda').style.display = 'none';
+            document.getElementById('btnAnadir').disabled = false;
+        }
+    </script>
+</body>
+</html>

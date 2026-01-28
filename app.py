@@ -1,10 +1,16 @@
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, url_for, flash
 from flask_sqlalchemy import SQLAlchemy
 import os
+import requests
+import json
+import csv
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///catalogos.db'
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///catalogos_nuevo.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.secret_key = 'tu_clave_secreta_aqui'  # Necesaria para flash messages
 db = SQLAlchemy(app)
 
 # Diccionario de subcategorías por categoría padre
@@ -57,6 +63,61 @@ class Subcategoria(db.Model):
     def __repr__(self):
         return f'<Subcategoria {self.cod_categoria}>'
 
+class Ficha(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    subcategoria_id = db.Column(db.Integer, db.ForeignKey('subcategoria.id'), nullable=False)
+    fila_numero = db.Column(db.Integer, nullable=False)
+    subcategoria = db.relationship('Subcategoria', backref=db.backref('fichas', lazy=True))
+
+    def __repr__(self):
+        return f'<Ficha {self.fila_numero}>'
+
+class Tarjeta(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    ficha_id = db.Column(db.Integer, db.ForeignKey('ficha.id'), nullable=False)
+    marca = db.Column(db.String(10), nullable=False)
+    imagen = db.Column(db.String(200))
+    nombre = db.Column(db.String(200))
+    valor_energetico = db.Column(db.String(50))
+    peso = db.Column(db.String(50))
+    volumen = db.Column(db.String(50))
+    ficha = db.relationship('Ficha', backref=db.backref('tarjetas', lazy=True))
+
+    def __repr__(self):
+        return f'<Tarjeta {self.marca}>'
+
+class Producto(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    id_csv = db.Column(db.Integer, unique=True, nullable=False)  # ID del CSV para relación con atributos
+    marca = db.Column(db.String(10), nullable=False)  # AS, WD, SV, HY, NL, FR
+    producto_id = db.Column(db.String(50))  # ProductoId del CSV
+    sku = db.Column(db.String(50))
+    ean = db.Column(db.String(50))
+    descripcion = db.Column(db.Text)
+    titulo = db.Column(db.Text)
+    descripcion_larga = db.Column(db.Text)
+    estado_referencia = db.Column(db.String(50))
+    clasificacion = db.Column(db.String(50))
+    color = db.Column(db.String(100))
+    dimensiones = db.Column(db.String(100))
+    
+    def __repr__(self):
+        return f'<Producto {self.sku}>'
+
+class Atributo(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    producto_id = db.Column(db.Integer, db.ForeignKey('producto.id'), nullable=False)
+    atributo = db.Column(db.String(100), nullable=False)
+    valor = db.Column(db.String(200), nullable=False)
+    orden = db.Column(db.Integer, nullable=False, default=0, server_default='0')  # Campo para ordenar atributos
+    producto = db.relationship('Producto', backref=db.backref('atributos', lazy=True))
+
+class Imagen(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    producto_id = db.Column(db.Integer, db.ForeignKey('producto.id'), nullable=False)
+    url = db.Column(db.String(500), nullable=False)
+    producto = db.relationship('Producto', backref=db.backref('imagenes', lazy=True))
+
 # Crear la base de datos si no existe
 with app.app_context():
     db.create_all()
@@ -65,6 +126,362 @@ with app.app_context():
 def index():
     catalogos = Catalogo.query.all()
     return render_template('index.html', catalogos=catalogos)
+
+@app.route('/productos')
+def productos():
+    from sqlalchemy import func
+    buscar = request.args.get('buscar', '').strip()
+    
+    # Subconsulta para contar atributos
+    atributos_count = db.session.query(
+        Atributo.producto_id,
+        func.count(Atributo.id).label('count')
+    ).group_by(Atributo.producto_id).subquery()
+    
+    if buscar:
+        # Buscar en SKU, marca, título, descripción
+        query = db.session.query(Producto, func.coalesce(atributos_count.c.count, 0).label('num_atributos')).outerjoin(
+            atributos_count, Producto.id == atributos_count.c.producto_id
+        ).filter(
+            db.or_(
+                Producto.sku.like(f'%{buscar}%'),
+                Producto.marca.like(f'%{buscar}%'),
+                Producto.titulo.like(f'%{buscar}%'),
+                Producto.descripcion.like(f'%{buscar}%'),
+                Producto.ean.like(f'%{buscar}%')
+            )
+        )
+    else:
+        query = db.session.query(Producto, func.coalesce(atributos_count.c.count, 0).label('num_atributos')).outerjoin(
+            atributos_count, Producto.id == atributos_count.c.producto_id
+        )
+    
+    resultados = query.all()
+    # Crear lista de tuplas (producto, num_atributos)
+    productos_con_conteo = [(p, int(count)) for p, count in resultados]
+    
+    return render_template('productos.html', productos=productos_con_conteo, buscar=buscar)
+
+@app.route('/producto/<int:id>/atributos')
+def producto_atributos(id):
+    producto = Producto.query.get_or_404(id)
+    atributos = Atributo.query.filter_by(producto_id=id).order_by(Atributo.orden).all()
+    return render_template('atributos.html', producto=producto, atributos=atributos)
+
+@app.route('/eliminar_producto/<int:id>')
+def eliminar_producto(id):
+    producto = Producto.query.get_or_404(id)
+    # Eliminar atributos e imágenes relacionados
+    Atributo.query.filter_by(producto_id=id).delete()
+    Imagen.query.filter_by(producto_id=id).delete()
+    db.session.delete(producto)
+    db.session.commit()
+    flash('Producto eliminado correctamente.')
+    return redirect(url_for('productos'))
+
+@app.route('/eliminar_atributo/<int:id>')
+def eliminar_atributo(id):
+    atributo = Atributo.query.get_or_404(id)
+    producto_id = atributo.producto_id
+    db.session.delete(atributo)
+    db.session.commit()
+    flash('Atributo eliminado correctamente.')
+    return redirect(url_for('producto_atributos', id=producto_id))
+
+@app.route('/importar', methods=['GET', 'POST'])
+def importar():
+    if request.method == 'POST':
+        tipo = request.form['tipo']
+        archivo = request.files['archivo']
+        
+        if not archivo or not archivo.filename:
+            flash('No se seleccionó ningún archivo.', 'error')
+            return render_template('importar.html')
+            
+        if not archivo.filename.endswith('.csv'):
+            flash('Archivo no válido. Debe ser un CSV.', 'error')
+            return render_template('importar.html')
+            
+        try:
+            filename = secure_filename(archivo.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            archivo.save(filepath)
+            
+            # Guardar información en sesión para la página de progreso
+            from flask import session
+            session['import_tipo'] = tipo
+            session['import_file'] = filepath
+            session['import_filename'] = filename
+            
+            return redirect(url_for('importar_progreso'))
+        except Exception as e:
+            flash(f'Error durante la importación: {str(e)}', 'error')
+            return render_template('importar.html')
+    
+    return render_template('importar.html')
+
+@app.route('/importar_progreso')
+def importar_progreso():
+    return render_template('importar_progreso.html')
+
+@app.route('/importar_stream')
+def importar_stream():
+    from flask import session, Response
+    import threading
+    import time
+    
+    tipo = session.get('import_tipo')
+    filepath = session.get('import_file')
+    
+    def generar():
+        try:
+            if tipo == 'productos':
+                for mensaje in importar_productos_con_progreso(filepath):
+                    yield f"data: {mensaje}\n\n"
+            elif tipo == 'atributos':
+                for mensaje in importar_atributos_con_progreso(filepath):
+                    yield f"data: {mensaje}\n\n"
+            elif tipo == 'imagenes':
+                for mensaje in importar_imagenes_con_progreso(filepath):
+                    yield f"data: {mensaje}\n\n"
+            
+            # Eliminar archivo temporal después de importar
+            try:
+                os.remove(filepath)
+            except:
+                pass
+        except Exception as e:
+            yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
+    
+    return Response(generar(), mimetype='text/event-stream')
+
+def importar_productos_con_progreso(filepath):
+    import json
+    import sys
+    csv.field_size_limit(sys.maxsize)  # Aumentar límite para campos grandes
+    
+    marca_map = {
+        'ASPES': 'AS', 'Aspes': 'AS',
+        'WONDER': 'WD', 'Wonder': 'WD',
+        'SVAN': 'SV', 'Svan': 'SV',
+        'HYUNDAI': 'HY', 'Hyundai': 'HY',
+        'NILSON': 'NL', 'Nilson': 'NL',
+        'FAGOR': 'FR', 'Fagor': 'FR'
+    }
+    
+    importados = 0
+    omitidos = 0
+    total = 0
+    
+    try:
+        # Contar líneas primero
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            total = sum(1 for _ in f) - 1  # -1 por la cabecera
+        
+        yield json.dumps({'tipo': 'inicio', 'total': total, 'mensaje': f'Iniciando importación de {total} productos...'})
+        
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            procesados = 0
+            
+            for row in reader:
+                procesados += 1
+                marca_original = row.get('Marca', '').strip()
+                
+                if marca_original in marca_map:
+                    try:
+                        with db.session.no_autoflush:
+                            id_csv = int(row.get('id', 0))
+                            if Producto.query.filter_by(id_csv=id_csv).first():
+                                omitidos += 1
+                                continue
+                                
+                            producto = Producto(
+                                id_csv=id_csv,
+                                marca=marca_map[marca_original],
+                                producto_id=row.get('ProductoId', '').strip(),
+                                sku=row.get('Sku', '').strip(),
+                                ean=row.get('Ean', '').strip(),
+                                descripcion=row.get('Descripcion', '').strip(),
+                                titulo=row.get('Titulo', '').strip(),
+                                descripcion_larga=row.get('DescripcionLarga', '').strip(),
+                                estado_referencia=row.get('EstadoReferencia', '').strip(),
+                                clasificacion=row.get('Clasificacion', '').strip(),
+                                color=row.get('Color', '').strip(),
+                                dimensiones=row.get('Dimensiones', '').strip()
+                            )
+                            db.session.add(producto)
+                            importados += 1
+                    except Exception as e:
+                        print(f"Error importando producto: {e}")
+                        db.session.rollback()
+                        omitidos += 1
+                        continue
+                else:
+                    omitidos += 1
+                
+                # Enviar progreso cada 100 registros y hacer commit parcial
+                if procesados % 100 == 0:
+                    try:
+                        db.session.commit()  # Commit parcial
+                    except Exception as e:
+                        print(f"Error en commit: {e}")
+                        db.session.rollback()
+                    porcentaje = int((procesados / total) * 100)
+                    yield json.dumps({
+                        'tipo': 'progreso',
+                        'procesados': procesados,
+                        'total': total,
+                        'porcentaje': porcentaje,
+                        'importados': importados,
+                        'omitidos': omitidos
+                    })
+            
+            # Enviar progreso final si quedan registros sin reportar
+            if procesados % 100 != 0 or procesados == 0:
+                porcentaje = 100 if total > 0 else 0
+                yield json.dumps({
+                    'tipo': 'progreso',
+                    'procesados': procesados,
+                    'total': total,
+                    'porcentaje': porcentaje,
+                    'importados': importados,
+                    'omitidos': omitidos
+                })
+        
+        try:
+            db.session.commit()
+        except Exception as e:
+            print(f"Error en commit final: {e}")
+            db.session.rollback()
+            
+        yield json.dumps({
+            'tipo': 'completado',
+            'importados': importados,
+            'omitidos': omitidos,
+            'mensaje': f'Importados {importados} productos. Omitidos {omitidos} (duplicados o marcas no incluidas).'
+        })
+    except Exception as e:
+        db.session.rollback()
+        yield json.dumps({'tipo': 'error', 'mensaje': str(e)})
+        raise
+
+def importar_atributos_con_progreso(filepath):
+    import json
+    import sys
+    csv.field_size_limit(sys.maxsize)  # Aumentar límite para campos grandes
+    
+    importados = 0
+    omitidos = 0
+    total = 0
+    
+    try:
+        # Contar líneas primero
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            total = sum(1 for _ in f) - 1  # -1 por la cabecera
+        
+        yield json.dumps({'tipo': 'inicio', 'total': total, 'mensaje': f'Iniciando importación de {total} atributos...'})
+        
+        with open(filepath, 'r', encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f, delimiter=';')
+            procesados = 0
+            
+            for row in reader:
+                procesados += 1
+                try:
+                    with db.session.no_autoflush:
+                        producto_id_csv = int(row.get('ProductoId', 0))
+                        producto = Producto.query.filter_by(id_csv=producto_id_csv).first()
+                        
+                        if producto:
+                            atributo = Atributo(
+                                producto_id=producto.id,
+                                atributo=row.get('Nombre', '').strip(),
+                                valor=row.get('Valor', '').strip(),
+                                orden=int(row.get('OrdenEnGrupo', 0) or 0)  # Campo OrdenEnGrupo del CSV
+                            )
+                            db.session.add(atributo)
+                            importados += 1
+                        else:
+                            omitidos += 1
+                except Exception as e:
+                    print(f"Error importando atributo: {e}")
+                    db.session.rollback()  # Rollback en caso de error
+                    omitidos += 1
+                    continue
+                
+                # Enviar progreso cada 100 registros y hacer commit parcial
+                if procesados % 100 == 0:
+                    try:
+                        db.session.commit()  # Commit parcial
+                    except Exception as e:
+                        print(f"Error en commit: {e}")
+                        db.session.rollback()
+                    porcentaje = int((procesados / total) * 100)
+                    yield json.dumps({
+                        'tipo': 'progreso',
+                        'procesados': procesados,
+                        'total': total,
+                        'porcentaje': porcentaje,
+                        'importados': importados,
+                        'omitidos': omitidos
+                    })
+            
+            # Enviar progreso final si quedan registros sin reportar
+            if procesados % 100 != 0 or procesados == 0:
+                porcentaje = 100 if total > 0 else 0
+                yield json.dumps({
+                    'tipo': 'progreso',
+                    'procesados': procesados,
+                    'total': total,
+                    'porcentaje': porcentaje,
+                    'importados': importados,
+                    'omitidos': omitidos
+                })
+        
+        try:
+            db.session.commit()
+        except Exception as e:
+            print(f"Error en commit final: {e}")
+            db.session.rollback()
+            
+        yield json.dumps({
+            'tipo': 'completado',
+            'importados': importados,
+            'omitidos': omitidos,
+            'mensaje': f'Importados {importados} atributos. Omitidos {omitidos} (productos no encontrados).'
+        })
+    except Exception as e:
+        db.session.rollback()
+        yield json.dumps({'tipo': 'error', 'mensaje': str(e)})
+        raise
+
+def importar_imagenes_con_progreso(filepath):
+    import json
+    yield json.dumps({'tipo': 'error', 'mensaje': 'Importación de imágenes aún no implementada'})
+
+@app.route('/eliminar_datos')
+def eliminar_datos():
+    tipo = request.args.get('tipo', 'todo')
+    
+    if tipo == 'productos':
+        Producto.query.delete()
+        flash('Productos eliminados correctamente.')
+    elif tipo == 'atributos':
+        Atributo.query.delete()
+        flash('Atributos eliminados correctamente.')
+    elif tipo == 'imagenes':
+        Imagen.query.delete()
+        flash('Imágenes eliminadas correctamente.')
+    elif tipo == 'todo':
+        # Eliminar en cascada
+        Imagen.query.delete()
+        Atributo.query.delete()
+        Producto.query.delete()
+        flash('Todos los datos importados eliminados correctamente.')
+    
+    db.session.commit()
+    return redirect(url_for('index'))
 
 @app.route('/add', methods=['POST'])
 def add_catalogo():
@@ -79,6 +496,15 @@ def add_catalogo():
 @app.route('/delete/<int:id>')
 def delete_catalogo(id):
     catalogo = Catalogo.query.get_or_404(id)
+    # Eliminar en cascada
+    for categoria in catalogo.categorias:
+        for subcategoria in categoria.subcategorias:
+            for ficha in subcategoria.fichas:
+                for tarjeta in ficha.tarjetas:
+                    db.session.delete(tarjeta)
+                db.session.delete(ficha)
+            db.session.delete(subcategoria)
+        db.session.delete(categoria)
     db.session.delete(catalogo)
     db.session.commit()
     return redirect(url_for('index'))
@@ -102,6 +528,13 @@ def add_categoria(catalogo_id):
 def delete_categoria(id):
     categoria = Categoria.query.get_or_404(id)
     catalogo_id = categoria.catalogo_id
+    # Eliminar en cascada
+    for subcategoria in categoria.subcategorias:
+        for ficha in subcategoria.fichas:
+            for tarjeta in ficha.tarjetas:
+                db.session.delete(tarjeta)
+            db.session.delete(ficha)
+        db.session.delete(subcategoria)
     db.session.delete(categoria)
     db.session.commit()
     return redirect(url_for('configurar_catalogo', catalogo_id=catalogo_id))
@@ -126,6 +559,11 @@ def add_subcategoria(categoria_id):
 def delete_subcategoria(id):
     subcategoria = Subcategoria.query.get_or_404(id)
     categoria_id = subcategoria.categoria_id
+    # Eliminar en cascada
+    for ficha in subcategoria.fichas:
+        for tarjeta in ficha.tarjetas:
+            db.session.delete(tarjeta)
+        db.session.delete(ficha)
     db.session.delete(subcategoria)
     db.session.commit()
     return redirect(url_for('categoria', categoria_id=categoria_id))
@@ -146,6 +584,125 @@ def copy_subcategoria(categoria_id):
     db.session.add(nueva_subcategoria)
     db.session.commit()
     return redirect(url_for('categoria', categoria_id=categoria_id))
+
+@app.route('/fichas/<int:subcategoria_id>')
+def fichas(subcategoria_id):
+    subcategoria = Subcategoria.query.get_or_404(subcategoria_id)
+    fichas = Ficha.query.filter_by(subcategoria_id=subcategoria_id).order_by(Ficha.fila_numero).all()
+    marcas = subcategoria.categoria.catalogo.marcas.split(',')
+    
+    # Calcular totales por marca
+    totales_marca = {}
+    total_general = 0
+    for marca in marcas:
+        count = sum(1 for f in fichas for t in f.tarjetas if t.marca == marca)
+        totales_marca[marca] = count
+        total_general += count
+    
+    return render_template('fichas.html', subcategoria=subcategoria, fichas=fichas, marcas=marcas, totales_marca=totales_marca, total_general=total_general)
+
+@app.route('/add_fila/<int:subcategoria_id>')
+def add_fila(subcategoria_id):
+    max_fila = db.session.query(db.func.max(Ficha.fila_numero)).filter_by(subcategoria_id=subcategoria_id).scalar() or 0
+    nueva_fila = Ficha(subcategoria_id=subcategoria_id, fila_numero=max_fila + 1)
+    db.session.add(nueva_fila)
+    db.session.commit()
+    return redirect(url_for('fichas', subcategoria_id=subcategoria_id))
+
+@app.route('/delete_fila/<int:id>')
+def delete_fila(id):
+    ficha = Ficha.query.get_or_404(id)
+    subcategoria_id = ficha.subcategoria_id
+    # Eliminar en cascada
+    for tarjeta in ficha.tarjetas:
+        db.session.delete(tarjeta)
+    db.session.delete(ficha)
+    db.session.commit()
+    return redirect(url_for('fichas', subcategoria_id=subcategoria_id))
+
+@app.route('/buscar_productos_ajax')
+def buscar_productos_ajax():
+    buscar = request.args.get('q', '').strip()
+    marca = request.args.get('marca', '').strip()
+    
+    if not buscar or len(buscar) < 2:
+        return {'productos': []}
+    
+    query = Producto.query.filter(
+        db.or_(
+            Producto.sku.like(f'%{buscar}%'),
+            Producto.titulo.like(f'%{buscar}%'),
+            Producto.descripcion.like(f'%{buscar}%')
+        )
+    )
+    
+    if marca:
+        query = query.filter(Producto.marca == marca)
+    
+    productos = query.limit(10).all()
+    
+    return {
+        'productos': [{
+            'id': p.id,
+            'sku': p.sku,
+            'marca': p.marca,
+            'titulo': p.titulo,
+            'dimensiones': p.dimensiones,
+            'color': p.color
+        } for p in productos]
+    }
+
+@app.route('/add_tarjeta/<int:ficha_id>/<marca>', methods=['POST'])
+def add_tarjeta(ficha_id, marca):
+    ficha = Ficha.query.get_or_404(ficha_id)
+    producto_id = request.form.get('producto_id', '').strip()
+    
+    if not producto_id:
+        flash('Debe seleccionar un producto', 'error')
+        return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+    
+    try:
+        # Buscar producto en la BD
+        producto = Producto.query.get(int(producto_id))
+        
+        if producto:
+            nombre = producto.titulo or producto.sku
+            imagen = ''
+            energy = ''
+            peso = producto.dimensiones or ''
+            volumen = producto.color or ''
+            
+            # Intentar obtener atributos del producto
+            atributo_peso = Atributo.query.filter_by(producto_id=producto.id, atributo='Peso').first()
+            if atributo_peso:
+                peso = atributo_peso.valor
+        else:
+            flash('Producto no encontrado', 'error')
+            return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+    except (ValueError, Exception) as e:
+        flash(f'Error al añadir producto: {str(e)}', 'error')
+        return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+    
+    tarjeta = Tarjeta(ficha_id=ficha_id, marca=marca, imagen=imagen, nombre=nombre, valor_energetico=energy, peso=peso, volumen=volumen)
+    db.session.add(tarjeta)
+    db.session.commit()
+    flash('Producto añadido correctamente', 'success')
+    return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+
+@app.route('/delete_tarjeta/<int:id>')
+def delete_tarjeta(id):
+    tarjeta = Tarjeta.query.get_or_404(id)
+    ficha_id = tarjeta.ficha_id
+    # Opcional: eliminar el archivo
+    if tarjeta.imagen:
+        try:
+            os.remove(os.path.join('static', tarjeta.imagen))
+        except:
+            pass
+    db.session.delete(tarjeta)
+    db.session.commit()
+    ficha = Ficha.query.get(ficha_id)
+    return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
 
 if __name__ == '__main__':
     app.run(debug=True)
