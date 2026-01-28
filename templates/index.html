@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Catálogos</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Catálogos de Productos</h1>
+        <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Catálogo</button>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Código</th>
+                    <th>Descripción</th>
+                    <th>Marcas</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for catalogo in catalogos %}
+                <tr>
+                    <td>{{ catalogo.codigo }}</td>
+                    <td>{{ catalogo.descripcion }}</td>
+                    <td>{{ catalogo.marcas }}</td>
+                    <td>
+                        <button class="btn btn-info btn-sm">Ver</button>
+                        <button class="btn btn-warning btn-sm">Configurar</button>
+                        <a href="{{ url_for('delete_catalogo', id=catalogo.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal para Añadir -->
+    <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addModalLabel">Añadir Catálogo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('add_catalogo') }}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="codigo" class="form-label">Código</label>
+                            <input type="text" class="form-control" id="codigo" name="codigo" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="descripcion" class="form-label">Descripción</label>
+                            <input type="text" class="form-control" id="descripcion" name="descripcion" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="marcas" class="form-label">Marcas</label>
+                            <div class="d-flex mb-2">
+                                <select class="form-select me-2" id="marcaSelect">
+                                    <option value="">Seleccionar Marca</option>
+                                    <option value="SV">SV</option>
+                                    <option value="AS">AS</option>
+                                    <option value="WD">WD</option>
+                                    <option value="NL">NL</option>
+                                    <option value="FG">FG</option>
+                                    <option value="HY">HY</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-primary" id="addMarcaBtn">Añadir</button>
+                            </div>
+                            <ul class="list-group" id="marcasList"></ul>
+                            <input type="hidden" name="marcas" id="marcasHidden" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Añadir</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const marcaSelect = document.getElementById('marcaSelect');
+            const addMarcaBtn = document.getElementById('addMarcaBtn');
+            const marcasList = document.getElementById('marcasList');
+            const marcasHidden = document.getElementById('marcasHidden');
+            let selectedMarcas = [];
+
+            addMarcaBtn.addEventListener('click', function() {
+                const selectedValue = marcaSelect.value;
+                if (selectedValue && !selectedMarcas.includes(selectedValue)) {
+                    selectedMarcas.push(selectedValue);
+                    updateMarcasList();
+                    updateHiddenField();
+                    marcaSelect.value = '';
+                }
+            });
+
+            function updateMarcasList() {
+                marcasList.innerHTML = '';
+                selectedMarcas.forEach(marca => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                    li.textContent = marca;
+                    const removeBtn = document.createElement('button');
+                    removeBtn.className = 'btn btn-sm btn-outline-danger';
+                    removeBtn.textContent = 'X';
+                    removeBtn.addEventListener('click', function() {
+                        selectedMarcas = selectedMarcas.filter(m => m !== marca);
+                        updateMarcasList();
+                        updateHiddenField();
+                    });
+                    li.appendChild(removeBtn);
+                    marcasList.appendChild(li);
+                });
+            }
+
+            function updateHiddenField() {
+                marcasHidden.value = selectedMarcas.join(',');
+            }
+
+            // Limpiar al cerrar el modal
+            document.getElementById('addModal').addEventListener('hidden.bs.modal', function() {
+                selectedMarcas = [];
+                updateMarcasList();
+                updateHiddenField();
+                marcaSelect.value = '';
+            });
+        });
+    </script>
+</body>
+</html>
