@@ -27,7 +27,7 @@
                     <td>{{ catalogo.marcas }}</td>
                     <td>
                         <button class="btn btn-info btn-sm">Ver</button>
-                        <button class="btn btn-warning btn-sm">Configurar</button>
+                        <a href="{{ url_for('configurar_catalogo', catalogo_id=catalogo.id) }}" class="btn btn-warning btn-sm">Configurar</a>
                         <a href="{{ url_for('delete_catalogo', id=catalogo.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
                     </td>
                 </tr>

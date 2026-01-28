@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configurar Catálogo</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1>Categoría Padre: {{ catalogo.codigo }} - {{ catalogo.descripcion }}</h1>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mb-3">Volver</a>
+        <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Categoría</button>
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Categoría Padre</th>
+                    <th>Descripción</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for categoria in categorias %}
+                <tr>
+                    <td>{{ categoria.cod_categoria }}</td>
+                    <td>{{ categoria.descripcion }}</td>
+                    <td>
+                        <button class="btn btn-info btn-sm">Ver</button>
+                        <a href="{{ url_for('categoria', categoria_id=categoria.id) }}" class="btn btn-warning btn-sm">Configurar</a>
+                        <a href="{{ url_for('delete_categoria', id=categoria.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Modal para Añadir Categoría -->
+    <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="addModalLabel">Añadir Categoría</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('add_categoria', catalogo_id=catalogo.id) }}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="cod_categoria" class="form-label">Cod Categoría</label>
+                            <select class="form-select" id="cod_categoria" name="cod_categoria" required>
+                                <option value="">Seleccionar Categoría</option>
+                                <option value="AGUA CALIENTE">AGUA CALIENTE</option>
+                                <option value="CAMPANAS">CAMPANAS</option>
+                                <option value="CLIMATIZACION">CLIMATIZACION</option>
+                                <option value="COCCION">COCCION</option>
+                                <option value="COCINAS">COCINAS</option>
+                                <option value="COMBINADOS">COMBINADOS</option>
+                                <option value="CONGELADORES">CONGELADORES</option>
+                                <option value="FRIGORIFICOS">FRIGORIFICOS</option>
+                                <option value="HORECA">HORECA</option>
+                                <option value="LAVADORAS">LAVADORAS</option>
+                                <option value="LAVAVAJILLAS">LAVAVAJILLAS</option>
+                                <option value="REFRIGERADORES">REFRIGERADORES</option>
+                                <option value="SECADORA">SECADORA</option>
+                                <option value="VINOTECAS">VINOTECAS</option>
+                                <option value="CALEFACCION">CALEFACCION</option>
+                                <option value="PAE">PAE</option>
+                                <option value="TELEVISION">TELEVISION</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="descripcion" class="form-label">Descripción</label>
+                            <input type="text" class="form-control" id="descripcion" name="descripcion" required>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-primary">Añadir</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
