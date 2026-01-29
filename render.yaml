@@ -4,8 +4,8 @@ services:
     env: python
     region: frankfurt
     plan: free
-    branch: main
-    buildCommand: "./build.sh"
+    branch: master
+    buildCommand: "chmod +x build.sh && ./build.sh"
     startCommand: "gunicorn app:app"
     envVars:
       - key: PYTHON_VERSION

@@ -13,13 +13,26 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from PIL import Image as PILImage
-from html2image import Html2Image
+try:
+    from html2image import Html2Image
+    HTML2IMAGE_AVAILABLE = True
+except ImportError:
+    HTML2IMAGE_AVAILABLE = False
+    print("Warning: html2image not available. Image rendering from HTML will be disabled.")
 import tempfile
 
 app = Flask(__name__)
 
 # Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///catalogos_nuevo.db')
+# Ensure instance folder exists
+instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+os.makedirs(instance_path, exist_ok=True)
+
+db_path = os.environ.get('DATABASE_URL')
+if not db_path:
+    db_path = f"sqlite:///{os.path.join(instance_path, 'catalogos_nuevo.db')}"
+
+app.config['SQLALCHEMY_DATABASE_URI'] = db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'static/uploads')
 app.secret_key = os.environ.get('SECRET_KEY', 'tu_clave_secreta_aqui')
@@ -979,6 +992,10 @@ def delete_tarjeta(id):
 
 def renderizar_tarjeta_como_imagen(producto, dm):
     """Renderiza una tarjeta como imagen HTML usando html2image"""
+    if not HTML2IMAGE_AVAILABLE:
+        print("html2image no está disponible")
+        return None
+    
     # Preparar atributos
     atributos = [attr for attr in producto.atributos if attr.valor]
     
