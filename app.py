@@ -16,9 +16,16 @@ app = Flask(__name__)
 
 # Configuration
 # Ensure instance folder exists
-# En Render, usar el disco persistente montado; localmente, usar carpeta instance
-instance_path = os.environ.get('RENDER_INSTANCE_PATH', 
-                                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
+# Detectar entorno: Azure App Service, Render, o local
+if os.environ.get('WEBSITE_SITE_NAME'):  # Azure App Service
+    instance_path = '/home/instance'
+    print("🔵 Detectado: Azure App Service")
+elif os.environ.get('RENDER_INSTANCE_PATH'):  # Render
+    instance_path = os.environ.get('RENDER_INSTANCE_PATH')
+    print("🟢 Detectado: Render")
+else:  # Local
+    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+    print("🟡 Detectado: Entorno local")
 
 print(f"========================================")
 print(f"DIAGNÓSTICO DE DISCO PERSISTENTE")
