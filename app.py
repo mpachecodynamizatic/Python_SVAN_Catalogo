@@ -606,23 +606,42 @@ def importar_datos_manuales_con_progreso():
     
     # Obtener todos los productos
     productos = Producto.query.all()
-    total = len(productos)
+    total_productos = len(productos)
     
-    if total == 0:
+    if total_productos == 0:
         yield json.dumps({'tipo': 'error', 'mensaje': 'No hay productos para generar datos manuales'})
         return
     
-    yield json.dumps({'tipo': 'inicio', 'total': total, 'mensaje': f'Generando datos aleatorios para {total} productos...'})
+    # Filtrar productos que NO tienen datos manuales
+    productos_sin_datos = []
+    for producto in productos:
+        dato_existente = DatosManuales.query.filter_by(sku=producto.sku).first()
+        if not dato_existente:
+            productos_sin_datos.append(producto)
+    
+    total = len(productos_sin_datos)
+    saltados = total_productos - total
+    
+    if total == 0:
+        yield json.dumps({
+            'tipo': 'fin',
+            'mensaje': f'Todos los productos ({total_productos}) ya tienen datos manuales',
+            'creados': 0,
+            'saltados': saltados
+        })
+        return
+    
+    yield json.dumps({
+        'tipo': 'inicio',
+        'total': total,
+        'mensaje': f'Generando datos para {total} productos (saltando {saltados} que ya tienen datos)...'
+    })
     
     fabricantes = ['Samsung', 'LG', 'Bosch', 'Siemens', 'Whirlpool', 'Electrolux', 'AEG', 'Miele', 'Teka', 'Balay']
     creados = 0
-    actualizados = 0
     
-    for i, producto in enumerate(productos, 1):
+    for i, producto in enumerate(productos_sin_datos, 1):
         try:
-            # Verificar si ya existe
-            dato_existente = DatosManuales.query.filter_by(sku=producto.sku).first()
-            
             # Generar datos aleatorios
             unidades_vendidas = random.randint(0, 100)
             pvp = round(random.uniform(50.0, 2000.0), 2)
@@ -635,38 +654,28 @@ def importar_datos_manuales_con_progreso():
             unidades_entrada = random.randint(5, 30)
             fabricante = random.choice(fabricantes)
             
-            if dato_existente:
-                # Actualizar
-                dato_existente.unidades_vendidas = unidades_vendidas
-                dato_existente.pvp = pvp
-                dato_existente.inventario = inventario
-                dato_existente.fecha_entrada = fecha_entrada
-                dato_existente.unidades_entrada = unidades_entrada
-                dato_existente.fabricante = fabricante
-                actualizados += 1
-            else:
-                # Crear nuevo
-                nuevo_dato = DatosManuales(
-                    sku=producto.sku,
-                    unidades_vendidas=unidades_vendidas,
-                    pvp=pvp,
-                    inventario=inventario,
-                    fecha_entrada=fecha_entrada,
-                    unidades_entrada=unidades_entrada,
-                    fabricante=fabricante
-                )
-                db.session.add(nuevo_dato)
-                creados += 1
+            # Crear nuevo
+            nuevo_dato = DatosManuales(
+                sku=producto.sku,
+                unidades_vendidas=unidades_vendidas,
+                pvp=pvp,
+                inventario=inventario,
+                fecha_entrada=fecha_entrada,
+                unidades_entrada=unidades_entrada,
+                fabricante=fabricante
+            )
+            db.session.add(nuevo_dato)
+            creados += 1
             
             db.session.commit()
             
-            # Enviar progreso cada 10 productos
-            if i % 10 == 0 or i == total:
+            # Enviar progreso cada 5 productos o al final
+            if i % 5 == 0 or i == total:
                 yield json.dumps({
                     'tipo': 'progreso',
                     'actual': i,
                     'total': total,
-                    'mensaje': f'Procesando producto {i}/{total} - SKU: {producto.sku}'
+                    'mensaje': f'Creando datos {i}/{total} - SKU: {producto.sku}'
                 })
         
         except Exception as e:
@@ -678,9 +687,9 @@ def importar_datos_manuales_con_progreso():
     
     yield json.dumps({
         'tipo': 'fin',
-        'mensaje': f'Completado: {creados} nuevos, {actualizados} actualizados',
+        'mensaje': f'Completado: {creados} nuevos creados, {saltados} saltados (ya existían)',
         'creados': creados,
-        'actualizados': actualizados
+        'saltados': saltados
     })
 
 @app.route('/eliminar_datos')
