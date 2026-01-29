@@ -16,19 +16,20 @@
             </ol>
         </nav>
         <h2>Importar Datos</h2>
-        <form method="POST" enctype="multipart/form-data">
+        <form method="POST" enctype="multipart/form-data" id="importForm">
             <div class="mb-3">
                 <label for="tipo" class="form-label">Tipo de Datos</label>
                 <select class="form-select" id="tipo" name="tipo" required>
                     <option value="">Seleccionar...</option>
                     <option value="productos">Productos</option>
                     <option value="atributos">Atributos</option>
-                    <option value="imagenes">Imágenes</option>
+                    <option value="datos_manuales">Datos Manuales (aleatorios)</option>
                 </select>
             </div>
-            <div class="mb-3">
+            <div class="mb-3" id="archivoDiv">
                 <label for="archivo" class="form-label">Archivo CSV</label>
-                <input type="file" class="form-control" id="archivo" name="archivo" accept=".csv" required>
+                <input type="file" class="form-control" id="archivo" name="archivo" accept=".csv">
+                <small class="text-muted">Seleccione un archivo CSV para importar</small>
             </div>
             <button type="submit" class="btn btn-primary">Importar</button>
             <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancelar</a>
@@ -44,5 +45,32 @@
         {% endwith %}
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Mostrar/ocultar campo de archivo según el tipo seleccionado
+        document.getElementById('tipo').addEventListener('change', function() {
+            const archivoDiv = document.getElementById('archivoDiv');
+            const archivoInput = document.getElementById('archivo');
+            
+            if (this.value === 'datos_manuales') {
+                archivoDiv.style.display = 'none';
+                archivoInput.required = false;
+            } else {
+                archivoDiv.style.display = 'block';
+                archivoInput.required = true;
+            }
+        });
+        
+        // Validar formulario antes de enviar
+        document.getElementById('importForm').addEventListener('submit', function(e) {
+            const tipo = document.getElementById('tipo').value;
+            const archivo = document.getElementById('archivo').files.length;
+            
+            if (tipo !== 'datos_manuales' && archivo === 0) {
+                e.preventDefault();
+                alert('Por favor seleccione un archivo CSV');
+                return false;
+            }
+        });
+    </script>
 </body>
 </html>

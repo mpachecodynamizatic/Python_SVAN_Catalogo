@@ -308,7 +308,17 @@ def eliminar_atributo(id):
 def importar():
     if request.method == 'POST':
         tipo = request.form['tipo']
-        archivo = request.files['archivo']
+        
+        # Para datos manuales no necesitamos archivo
+        if tipo == 'datos_manuales':
+            from flask import session
+            session['import_tipo'] = tipo
+            session['import_file'] = None
+            session['import_filename'] = 'Generación automática'
+            return redirect(url_for('importar_progreso'))
+        
+        # Para productos y atributos sí necesitamos archivo
+        archivo = request.files.get('archivo')
         
         if not archivo or not archivo.filename:
             flash('No se seleccionó ningún archivo.', 'error')
@@ -357,8 +367,8 @@ def importar_stream():
             elif tipo == 'atributos':
                 for mensaje in importar_atributos_con_progreso(filepath):
                     yield f"data: {mensaje}\n\n"
-            elif tipo == 'imagenes':
-                for mensaje in importar_imagenes_con_progreso(filepath):
+            elif tipo == 'datos_manuales':
+                for mensaje in importar_datos_manuales_con_progreso():
                     yield f"data: {mensaje}\n\n"
             
             # Eliminar archivo temporal después de importar
@@ -588,9 +598,90 @@ def importar_atributos_con_progreso(filepath):
         yield json.dumps({'tipo': 'error', 'mensaje': str(e)})
         raise
 
-def importar_imagenes_con_progreso(filepath):
+def importar_datos_manuales_con_progreso():
+    """Genera datos manuales aleatorios para todos los productos existentes"""
     import json
-    yield json.dumps({'tipo': 'error', 'mensaje': 'Importación de imágenes aún no implementada'})
+    import random
+    from datetime import datetime, timedelta
+    
+    # Obtener todos los productos
+    productos = Producto.query.all()
+    total = len(productos)
+    
+    if total == 0:
+        yield json.dumps({'tipo': 'error', 'mensaje': 'No hay productos para generar datos manuales'})
+        return
+    
+    yield json.dumps({'tipo': 'inicio', 'total': total, 'mensaje': f'Generando datos aleatorios para {total} productos...'})
+    
+    fabricantes = ['Samsung', 'LG', 'Bosch', 'Siemens', 'Whirlpool', 'Electrolux', 'AEG', 'Miele', 'Teka', 'Balay']
+    creados = 0
+    actualizados = 0
+    
+    for i, producto in enumerate(productos, 1):
+        try:
+            # Verificar si ya existe
+            dato_existente = DatosManuales.query.filter_by(sku=producto.sku).first()
+            
+            # Generar datos aleatorios
+            unidades_vendidas = random.randint(0, 100)
+            pvp = round(random.uniform(50.0, 2000.0), 2)
+            inventario = random.randint(0, 50)
+            
+            # Fecha de entrada aleatoria en los últimos 6 meses
+            fecha_aleatoria = datetime.now() - timedelta(days=random.randint(1, 180))
+            fecha_entrada = fecha_aleatoria.strftime('%d/%m/%Y')
+            
+            unidades_entrada = random.randint(5, 30)
+            fabricante = random.choice(fabricantes)
+            
+            if dato_existente:
+                # Actualizar
+                dato_existente.unidades_vendidas = unidades_vendidas
+                dato_existente.pvp = pvp
+                dato_existente.inventario = inventario
+                dato_existente.fecha_entrada = fecha_entrada
+                dato_existente.unidades_entrada = unidades_entrada
+                dato_existente.fabricante = fabricante
+                actualizados += 1
+            else:
+                # Crear nuevo
+                nuevo_dato = DatosManuales(
+                    sku=producto.sku,
+                    unidades_vendidas=unidades_vendidas,
+                    pvp=pvp,
+                    inventario=inventario,
+                    fecha_entrada=fecha_entrada,
+                    unidades_entrada=unidades_entrada,
+                    fabricante=fabricante
+                )
+                db.session.add(nuevo_dato)
+                creados += 1
+            
+            db.session.commit()
+            
+            # Enviar progreso cada 10 productos
+            if i % 10 == 0 or i == total:
+                yield json.dumps({
+                    'tipo': 'progreso',
+                    'actual': i,
+                    'total': total,
+                    'mensaje': f'Procesando producto {i}/{total} - SKU: {producto.sku}'
+                })
+        
+        except Exception as e:
+            yield json.dumps({
+                'tipo': 'error',
+                'mensaje': f'Error en producto {producto.sku}: {str(e)}'
+            })
+            continue
+    
+    yield json.dumps({
+        'tipo': 'fin',
+        'mensaje': f'Completado: {creados} nuevos, {actualizados} actualizados',
+        'creados': creados,
+        'actualizados': actualizados
+    })
 
 @app.route('/eliminar_datos')
 def eliminar_datos():
@@ -602,12 +693,12 @@ def eliminar_datos():
     elif tipo == 'atributos':
         Atributo.query.delete()
         flash('Atributos eliminados correctamente.')
-    elif tipo == 'imagenes':
-        Imagen.query.delete()
-        flash('Imágenes eliminadas correctamente.')
+    elif tipo == 'datos_manuales':
+        DatosManuales.query.delete()
+        flash('Datos Manuales eliminados correctamente.')
     elif tipo == 'todo':
         # Eliminar en cascada
-        Imagen.query.delete()
+        DatosManuales.query.delete()
         Atributo.query.delete()
         Producto.query.delete()
         flash('Todos los datos importados eliminados correctamente.')
