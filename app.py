@@ -1348,5 +1348,28 @@ def delete_tarjeta(id):
 # - /generar_pdf_catalogo/<int:catalogo_id>
 # ===================================================================
 
+# Inicializar base de datos al arrancar la aplicación
+# Este código solo crea tablas que no existen, NO destruye datos
+def init_database():
+    """Inicializa la base de datos creando solo las tablas que no existen"""
+    try:
+        with app.app_context():
+            # db.create_all() es SEGURO - solo crea tablas que no existen
+            # NO elimina ni modifica datos existentes
+            db.create_all()
+            
+            db_file_path = os.path.join(instance_path, 'catalogos_nuevo.db')
+            if os.path.exists(db_file_path):
+                size = os.path.getsize(db_file_path)
+                print(f"✅ Base de datos inicializada. Tamaño: {size:,} bytes")
+            else:
+                print("✅ Base de datos creada")
+    except Exception as e:
+        print(f"⚠️  Error inicializando base de datos: {e}")
+        print("La base de datos se inicializará en la primera petición")
+
+# Ejecutar inicialización solo una vez al arrancar
+init_database()
+
 if __name__ == '__main__':
     app.run(debug=True)
