@@ -39,9 +39,6 @@
             </ol>
         </nav>
         <a href="{{ url_for('categoria', categoria_id=subcategoria.categoria_id) }}" class="btn btn-secondary mb-3">Volver</a>
-        <a href="{{ url_for('generar_pdf_fichas', subcategoria_id=subcategoria.id) }}" class="btn btn-danger mb-3">
-            <i class="fas fa-file-pdf"></i> Generar PDF
-        </a>
         
         <!-- Contador de totales -->
         <div class="alert alert-info mb-3">
