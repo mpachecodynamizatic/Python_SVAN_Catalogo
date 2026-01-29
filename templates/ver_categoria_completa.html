@@ -87,6 +87,12 @@
                 {% set atributos = producto.atributos | selectattr('valor') | list %}
                 
                 <div class="card h-100" style="font-size: 0.75rem;">
+                    <!-- Header con botón Ver -->
+                    <div class="card-header p-1 d-flex justify-content-end" style="background-color: #e9ecef;">
+                        <a href="{{ url_for('ver_producto', id=producto.id) }}" class="btn btn-info btn-sm" style="font-size: 0.65rem; padding: 2px 8px;">
+                            <i class="fas fa-eye"></i> Ver
+                        </a>
+                    </div>
                     <!-- Fila superior: 2 bloques -->
                     <div class="row g-0">
                         <!-- Bloque superior izquierda: Imagen -->

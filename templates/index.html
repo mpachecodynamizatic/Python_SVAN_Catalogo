@@ -35,13 +35,25 @@
                 <li class="breadcrumb-item active" aria-current="page"><i class="fas fa-home"></i> Catálogos</li>
             </ol>
         </nav>
-        <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Catálogo</button>
-        <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#copyModal">Copiar Catálogo</button>
-        <a href="{{ url_for('productos') }}" class="btn btn-info mb-3">Productos</a>
-        <a href="{{ url_for('productos_atributos') }}" class="btn btn-warning mb-3">Productos-Atributos</a>
-        <a href="{{ url_for('datos_manuales') }}" class="btn btn-secondary mb-3">Datos Manuales</a>
-        <a href="{{ url_for('importar') }}" class="btn btn-success mb-3">Importar Datos</a>
-        <button class="btn btn-danger mb-3" data-bs-toggle="modal" data-bs-target="#deleteModal">Eliminar Datos</button>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div>
+                {% if session.usuario == 'admin' %}
+                <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Catálogo</button>
+                <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#copyModal">Copiar Catálogo</button>
+                <a href="{{ url_for('productos') }}" class="btn btn-info">Productos</a>
+                <a href="{{ url_for('productos_atributos') }}" class="btn btn-warning">Productos-Atributos</a>
+                <a href="{{ url_for('datos_manuales') }}" class="btn btn-secondary">Datos Manuales</a>
+                <a href="{{ url_for('importar') }}" class="btn btn-success">Importar Datos</a>
+                <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#deleteModal">Eliminar Datos</button>
+                {% endif %}
+            </div>
+            <div>
+                <span class="me-3"><i class="fas fa-user"></i> {{ session.usuario }}</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
+                    <i class="fas fa-sign-out-alt"></i> Cerrar Sesión
+                </a>
+            </div>
+        </div>
         {% with messages = get_flashed_messages() %}
             {% if messages %}
                 <div class="mt-3">
@@ -68,14 +80,67 @@
                     <td>{{ catalogo.marcas }}</td>
                     <td>
                         <a href="{{ url_for('ver_catalogo_completo', catalogo_id=catalogo.id) }}" class="btn btn-info btn-sm">Ver</a>
+                        {% if session.usuario == 'admin' %}
                         <a href="{{ url_for('configurar_catalogo', catalogo_id=catalogo.id) }}" class="btn btn-warning btn-sm">Configurar</a>
+                        {% else %}
+                        <a href="{{ url_for('configurar_catalogo', catalogo_id=catalogo.id) }}" class="btn btn-warning btn-sm">Detalle</a>
+                        {% endif %}
+                        {% if session.usuario == 'admin' %}
+                        <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#editCatalogoModal{{ catalogo.id }}" data-catalogo-id="{{ catalogo.id }}" data-codigo="{{ catalogo.codigo }}" data-descripcion="{{ catalogo.descripcion }}" data-marcas="{{ catalogo.marcas }}">Editar</button>
                         <a href="{{ url_for('delete_catalogo', id=catalogo.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
+                        {% endif %}
                     </td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
+
+    <!-- Modales para Editar cada catálogo -->
+    {% for catalogo in catalogos %}
+    <div class="modal fade" id="editCatalogoModal{{ catalogo.id }}" tabindex="-1" aria-labelledby="editCatalogoModalLabel{{ catalogo.id }}" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editCatalogoModalLabel{{ catalogo.id }}">Editar Catálogo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('editar_catalogo', catalogo_id=catalogo.id) }}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="descripcion{{ catalogo.id }}" class="form-label">Descripción</label>
+                            <input type="text" class="form-control" id="descripcion{{ catalogo.id }}" name="descripcion" value="{{ catalogo.descripcion }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="marcas{{ catalogo.id }}" class="form-label">Marcas</label>
+                            <div class="d-flex mb-2">
+                                <select class="form-select me-2" id="marcaSelectEdit{{ catalogo.id }}">
+                                    <option value="">Seleccionar Marca</option>
+                                    <option value="SV">SV</option>
+                                    <option value="AS">AS</option>
+                                    <option value="WD">WD</option>
+                                    <option value="NL">NL</option>
+                                    <option value="FG">FG</option>
+                                    <option value="HY">HY</option>
+                                </select>
+                                <button type="button" class="btn btn-outline-primary" id="addMarcaBtnEdit{{ catalogo.id }}">Añadir</button>
+                            </div>
+                            <ul class="list-group" id="marcasListEdit{{ catalogo.id }}"></ul>
+                            <input type="hidden" name="marcas" id="marcasHiddenEdit{{ catalogo.id }}" required>
+                            <div class="alert alert-warning mt-3">
+                                <i class="fas fa-exclamation-triangle"></i> Si eliminas una marca, se borrarán todas las tarjetas asociadas a esa marca.
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success">Guardar Cambios</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 
     <!-- Modal para Añadir -->
     <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">
@@ -255,6 +320,78 @@
                 document.getElementById('codigo_nuevo').value = '';
                 document.getElementById('descripcion_nuevo').value = '';
             });
+        });
+
+        // JavaScript para modales de editar catálogo
+        document.addEventListener('DOMContentLoaded', function() {
+            {% for catalogo in catalogos %}
+            (function() {
+                const catalogoId = '{{ catalogo.id }}';
+                let marcasActuales = '{{ catalogo.marcas }}'.split(',').filter(m => m.trim());
+                let selectedMarcasEdit = [...marcasActuales];
+                
+                const marcaSelectEdit = document.getElementById('marcaSelectEdit' + catalogoId);
+                const addMarcaBtnEdit = document.getElementById('addMarcaBtnEdit' + catalogoId);
+                const marcasListEdit = document.getElementById('marcasListEdit' + catalogoId);
+                const marcasHiddenEdit = document.getElementById('marcasHiddenEdit' + catalogoId);
+
+                // Renderizar marcas iniciales
+                renderMarcasListEdit();
+
+                addMarcaBtnEdit.addEventListener('click', function() {
+                    const marca = marcaSelectEdit.value;
+                    if (marca && !selectedMarcasEdit.includes(marca)) {
+                        selectedMarcasEdit.push(marca);
+                        renderMarcasListEdit();
+                        marcaSelectEdit.value = '';
+                    }
+                });
+
+                function renderMarcasListEdit() {
+                    marcasListEdit.innerHTML = '';
+                    selectedMarcasEdit.forEach((marca, index) => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item d-flex justify-content-between align-items-center';
+                        li.innerHTML = `
+                            <span>${marca}</span>
+                            <div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="moveMarcaEdit${catalogoId}(${index}, 'up')" ${index === 0 ? 'disabled' : ''}>
+                                    <i class="fas fa-arrow-up"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="moveMarcaEdit${catalogoId}(${index}, 'down')" ${index === selectedMarcasEdit.length - 1 ? 'disabled' : ''}>
+                                    <i class="fas fa-arrow-down"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeMarcaEdit${catalogoId}(${index})">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        `;
+                        marcasListEdit.appendChild(li);
+                    });
+                    marcasHiddenEdit.value = selectedMarcasEdit.join(',');
+                }
+
+                window['removeMarcaEdit' + catalogoId] = function(index) {
+                    selectedMarcasEdit.splice(index, 1);
+                    renderMarcasListEdit();
+                };
+
+                window['moveMarcaEdit' + catalogoId] = function(index, direction) {
+                    if (direction === 'up' && index > 0) {
+                        [selectedMarcasEdit[index - 1], selectedMarcasEdit[index]] = [selectedMarcasEdit[index], selectedMarcasEdit[index - 1]];
+                    } else if (direction === 'down' && index < selectedMarcasEdit.length - 1) {
+                        [selectedMarcasEdit[index], selectedMarcasEdit[index + 1]] = [selectedMarcasEdit[index + 1], selectedMarcasEdit[index]];
+                    }
+                    renderMarcasListEdit();
+                };
+
+                // Reiniciar al abrir el modal
+                document.getElementById('editCatalogoModal' + catalogoId).addEventListener('show.bs.modal', function() {
+                    selectedMarcasEdit = [...marcasActuales];
+                    renderMarcasListEdit();
+                });
+            })();
+            {% endfor %}
         });
     </script>
 </body>

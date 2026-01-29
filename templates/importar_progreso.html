@@ -203,6 +203,9 @@
                     
                     console.log(`Reintentando conexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
                     
+                    // Actualizar conteos de la base de datos durante el reintento
+                    cargarConteosFinales();
+                    
                     setTimeout(() => {
                         connectEventSource();
                     }, RECONNECT_DELAY);
@@ -220,6 +223,9 @@
                     `;
                     document.getElementById('resultado').style.display = 'block';
                     document.querySelector('.spinner').style.display = 'none';
+                    
+                    // Actualizar conteos finales también cuando se agote el máximo de reintentos
+                    cargarConteosFinales();
                 }
             };
         }

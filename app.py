@@ -1,10 +1,11 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, Response, render_template_string
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, Response, render_template_string, session
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
 import json
 import csv
 from werkzeug.utils import secure_filename
+from werkzeug.security import check_password_hash, generate_password_hash
 from io import BytesIO
 from PIL import Image as PILImage
 import tempfile
@@ -25,7 +26,13 @@ if not db_path:
 app.config['SQLALCHEMY_DATABASE_URI'] = db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'static/uploads')
-app.secret_key = os.environ.get('SECRET_KEY', 'tu_clave_secreta_aqui')
+app.secret_key = os.environ.get('SECRET_KEY', 'clave_secreta_muy_segura_cambiar_en_produccion')
+
+# Usuarios del sistema (en producción usar base de datos con contraseñas hasheadas)
+USUARIOS = {
+    'admin': generate_password_hash('admin123'),
+    'user': generate_password_hash('user123')
+}
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -198,12 +205,46 @@ class DatosManuales(db.Model):
 with app.app_context():
     db.create_all()
 
+# Decorador para proteger rutas
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'usuario' not in session:
+            flash('Debes iniciar sesión para acceder a esta página', 'warning')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+# Rutas de autenticación
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        usuario = request.form.get('usuario')
+        password = request.form.get('password')
+        
+        if usuario in USUARIOS and check_password_hash(USUARIOS[usuario], password):
+            session['usuario'] = usuario
+            flash(f'Bienvenido {usuario}', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Usuario o contraseña incorrectos', 'danger')
+    
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.pop('usuario', None)
+    flash('Sesión cerrada correctamente', 'info')
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     catalogos = Catalogo.query.all()
     return render_template('index.html', catalogos=catalogos)
 
 @app.route('/productos')
+@login_required
 def productos():
     from sqlalchemy import func
     buscar = request.args.get('buscar', '').strip()
@@ -242,6 +283,7 @@ def productos():
     return render_template('productos.html', productos=productos_con_conteo, buscar=buscar, pagination=pagination)
 
 @app.route('/productos_atributos')
+@login_required
 def productos_atributos():
     from sqlalchemy import func
     buscar = request.args.get('buscar', '').strip()
@@ -283,6 +325,7 @@ def productos_atributos():
                          total_atributos=total_atributos)
 
 @app.route('/datos_manuales')
+@login_required
 def datos_manuales():
     buscar = request.args.get('buscar', '').strip()
     page = request.args.get('page', 1, type=int)
@@ -315,10 +358,12 @@ def datos_manuales():
                          total_datos=total_datos)
 
 @app.route('/ver_producto/<int:id>')
+@login_required
 def ver_producto(id):
     producto = Producto.query.get_or_404(id)
     atributos = Atributo.query.filter_by(producto_id=id).order_by(Atributo.orden).all()
-    return render_template('ver_producto.html', producto=producto, atributos=atributos)
+    datos_manuales = DatosManuales.query.filter_by(sku=producto.sku).first()
+    return render_template('ver_producto.html', producto=producto, atributos=atributos, datos_manuales=datos_manuales)
 
 @app.route('/producto/<int:id>/atributos')
 def producto_atributos(id):
@@ -361,6 +406,7 @@ def importar_conteos():
         return json.dumps({'error': str(e)}), 500
 
 @app.route('/importar', methods=['GET', 'POST'])
+@login_required
 def importar():
     if request.method == 'POST':
         tipo = request.form['tipo']
@@ -974,10 +1020,46 @@ def ver_catalogo_completo(catalogo_id):
                          datos_manuales_dict=datos_manuales_dict)
 
 @app.route('/configurar/<int:catalogo_id>')
+@login_required
 def configurar_catalogo(catalogo_id):
     catalogo = Catalogo.query.get_or_404(catalogo_id)
     categorias = Categoria.query.filter_by(catalogo_id=catalogo_id).order_by(Categoria.cod_categoria).all()
     return render_template('configurar.html', catalogo=catalogo, categorias=categorias)
+
+@app.route('/editar_catalogo/<int:catalogo_id>', methods=['POST'])
+def editar_catalogo(catalogo_id):
+    catalogo = Catalogo.query.get_or_404(catalogo_id)
+    descripcion = request.form['descripcion']
+    marcas_nuevas = request.form['marcas']
+    
+    # Obtener marcas actuales y nuevas como listas
+    marcas_actuales = set(catalogo.marcas.split(','))
+    marcas_nuevas_set = set(marcas_nuevas.split(','))
+    
+    # Identificar marcas eliminadas
+    marcas_eliminadas = marcas_actuales - marcas_nuevas_set
+    
+    # Eliminar tarjetas de las marcas eliminadas
+    if marcas_eliminadas:
+        for categoria in catalogo.categorias:
+            for subcategoria in categoria.subcategorias:
+                for ficha in subcategoria.fichas:
+                    tarjetas_a_eliminar = [t for t in ficha.tarjetas if t.marca in marcas_eliminadas]
+                    for tarjeta in tarjetas_a_eliminar:
+                        db.session.delete(tarjeta)
+    
+    # Actualizar catálogo
+    catalogo.descripcion = descripcion
+    catalogo.marcas = marcas_nuevas
+    
+    db.session.commit()
+    
+    if marcas_eliminadas:
+        flash(f'Catálogo actualizado. Se eliminaron {len(list(marcas_eliminadas))} marca(s) y sus tarjetas asociadas.', 'success')
+    else:
+        flash('Catálogo actualizado exitosamente.', 'success')
+    
+    return redirect(url_for('configurar_catalogo', catalogo_id=catalogo_id))
 
 @app.route('/add_categoria/<int:catalogo_id>', methods=['POST'])
 def add_categoria(catalogo_id):
@@ -1004,6 +1086,7 @@ def delete_categoria(id):
     return redirect(url_for('configurar_catalogo', catalogo_id=catalogo_id))
 
 @app.route('/categoria/<int:categoria_id>')
+@login_required
 def categoria(categoria_id):
     categoria = Categoria.query.get_or_404(categoria_id)
     subcategorias = Subcategoria.query.filter_by(categoria_id=categoria_id).order_by(Subcategoria.cod_categoria).all()
@@ -1050,6 +1133,7 @@ def copy_subcategoria(categoria_id):
     return redirect(url_for('categoria', categoria_id=categoria_id))
 
 @app.route('/fichas/<int:subcategoria_id>')
+@login_required
 def fichas(subcategoria_id):
     subcategoria = Subcategoria.query.get_or_404(subcategoria_id)
     fichas = Ficha.query.filter_by(subcategoria_id=subcategoria_id).order_by(Ficha.fila_numero).all()

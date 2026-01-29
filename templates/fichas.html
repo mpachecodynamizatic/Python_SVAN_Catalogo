@@ -39,9 +39,11 @@
             </ol>
         </nav>
         <a href="{{ url_for('categoria', categoria_id=subcategoria.categoria_id) }}" class="btn btn-secondary mb-3">Volver</a>
+        {% if session.usuario == 'admin' %}
         <button class="btn btn-primary mb-3" onclick="window.location.href='{{ url_for('add_fila', subcategoria_id=subcategoria.id) }}'">
             <i class="fas fa-plus"></i> Añadir Fila
         </button>
+        {% endif %}
         
         <!-- Contador de totales -->
         <div class="alert alert-info mb-3">
@@ -157,18 +159,24 @@
                             <a href="{{ url_for('ver_producto', id=producto.id) }}" class="btn btn-info btn-sm" style="font-size: 0.6rem; padding: 2px 6px;" title="Ver producto completo">
                                 <i class="fas fa-eye"></i> Ver
                             </a>
+                            {% if session.usuario == 'admin' %}
                             <a href="{{ url_for('delete_tarjeta', id=tarjeta.id) }}" class="btn btn-danger btn-sm" style="font-size: 0.6rem; padding: 2px 6px;" onclick="return confirm('¿Eliminar este producto?')" title="Eliminar">
                                 <i class="fas fa-trash"></i> Eliminar
                             </a>
+                            {% endif %}
                         </div>
                     </div>
                 </div>
                 {% else %}
                 <div class="card text-center h-100">
                     <div class="card-body d-flex align-items-center justify-content-center">
+                        {% if session.usuario == 'admin' %}
                         <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#addModal" data-ficha="{{ ficha.id }}" data-marca="{{ marca }}">
                             <i class="fas fa-plus"></i> Añadir
                         </button>
+                        {% else %}
+                        <span class="text-muted"><i class="fas fa-ban"></i> Sin producto</span>
+                        {% endif %}
                     </div>
                 </div>
                 {% endif %}
@@ -195,9 +203,11 @@
                 </div>
             </div>
             <div class="col-1 d-flex align-items-center">
+                {% if session.usuario == 'admin' %}
                 <a href="{{ url_for('delete_fila', id=ficha.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar toda la fila?')">
                     <i class="fas fa-trash"></i>
                 </a>
+                {% endif %}
             </div>
         </div>
         {% endfor %}
