@@ -92,56 +92,108 @@
     </div>
 
     <script>
-        const eventSource = new EventSource("{{ url_for('importar_stream') }}");
+        let eventSource;
         let totalRegistros = 0;
+        let reconnectAttempts = 0;
+        const MAX_RECONNECT_ATTEMPTS = 5;
+        const RECONNECT_DELAY = 2000; // 2 segundos
+        let lastProcessedCount = 0;
+        let isCompleted = false;
         
-        eventSource.onmessage = function(event) {
-            const data = JSON.parse(event.data);
+        function connectEventSource() {
+            if (isCompleted) {
+                return; // No reconectar si ya se completó
+            }
             
-            if (data.tipo === 'inicio') {
-                totalRegistros = data.total;
-                document.getElementById('mensaje').textContent = data.mensaje;
-            }
-            else if (data.tipo === 'progreso') {
-                const porcentaje = data.porcentaje;
-                document.getElementById('progressBar').style.width = porcentaje + '%';
-                document.getElementById('progressBar').textContent = porcentaje + '%';
-                document.getElementById('procesados').textContent = data.procesados + ' / ' + data.total;
-                document.getElementById('importados').textContent = data.importados;
-                document.getElementById('omitidos').textContent = data.omitidos;
-            }
-            else if (data.tipo === 'completado') {
+            eventSource = new EventSource("{{ url_for('importar_stream') }}");
+            
+            eventSource.onopen = function() {
+                console.log('Conexión establecida');
+                if (reconnectAttempts > 0) {
+                    const mensajeDiv = document.getElementById('mensaje');
+                    mensajeDiv.className = 'alert alert-info text-center';
+                    mensajeDiv.innerHTML = '<i class="fas fa-sync"></i> Reconectado correctamente. Continuando...';
+                    reconnectAttempts = 0;
+                }
+            };
+            
+            eventSource.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                
+                if (data.tipo === 'inicio') {
+                    totalRegistros = data.total;
+                    document.getElementById('mensaje').textContent = data.mensaje;
+                }
+                else if (data.tipo === 'progreso') {
+                    lastProcessedCount = data.procesados;
+                    const porcentaje = data.porcentaje;
+                    document.getElementById('progressBar').style.width = porcentaje + '%';
+                    document.getElementById('progressBar').textContent = porcentaje + '%';
+                    document.getElementById('procesados').textContent = data.procesados + ' / ' + data.total;
+                    document.getElementById('importados').textContent = data.importados;
+                    document.getElementById('omitidos').textContent = data.omitidos;
+                }
+                else if (data.tipo === 'completado') {
+                    isCompleted = true;
+                    eventSource.close();
+                    document.getElementById('progressBar').style.width = '100%';
+                    document.getElementById('progressBar').textContent = '100%';
+                    document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                    document.getElementById('progressBar').classList.add('bg-success');
+                    document.getElementById('importados').textContent = data.importados;
+                    document.getElementById('omitidos').textContent = data.omitidos;
+                    document.getElementById('mensaje').className = 'alert alert-success text-center';
+                    document.getElementById('mensaje').innerHTML = '<i class="fas fa-check-circle"></i> ' + data.mensaje;
+                    document.getElementById('resultado').style.display = 'block';
+                    document.querySelector('.spinner').style.display = 'none';
+                }
+                else if (data.tipo === 'error') {
+                    isCompleted = true;
+                    eventSource.close();
+                    document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                    document.getElementById('progressBar').classList.add('bg-danger');
+                    document.getElementById('mensaje').className = 'alert alert-danger text-center';
+                    document.getElementById('mensaje').innerHTML = '<i class="fas fa-exclamation-circle"></i> Error: ' + data.mensaje;
+                    document.getElementById('resultado').style.display = 'block';
+                    document.querySelector('.spinner').style.display = 'none';
+                }
+            };
+            
+            eventSource.onerror = function(error) {
+                console.error('EventSource error:', error);
                 eventSource.close();
-                document.getElementById('progressBar').style.width = '100%';
-                document.getElementById('progressBar').textContent = '100%';
-                document.getElementById('progressBar').classList.remove('progress-bar-animated');
-                document.getElementById('progressBar').classList.add('bg-success');
-                document.getElementById('importados').textContent = data.importados;
-                document.getElementById('omitidos').textContent = data.omitidos;
-                document.getElementById('mensaje').className = 'alert alert-success text-center';
-                document.getElementById('mensaje').innerHTML = '<i class="fas fa-check-circle"></i> ' + data.mensaje;
-                document.getElementById('resultado').style.display = 'block';
-                document.querySelector('.spinner').style.display = 'none';
-            }
-            else if (data.tipo === 'error') {
-                eventSource.close();
-                document.getElementById('progressBar').classList.remove('progress-bar-animated');
-                document.getElementById('progressBar').classList.add('bg-danger');
-                document.getElementById('mensaje').className = 'alert alert-danger text-center';
-                document.getElementById('mensaje').innerHTML = '<i class="fas fa-exclamation-circle"></i> Error: ' + data.mensaje;
-                document.getElementById('resultado').style.display = 'block';
-                document.querySelector('.spinner').style.display = 'none';
-            }
-        };
+                
+                if (!isCompleted && reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
+                    reconnectAttempts++;
+                    const mensajeDiv = document.getElementById('mensaje');
+                    mensajeDiv.className = 'alert alert-warning text-center';
+                    mensajeDiv.innerHTML = `<i class="fas fa-exclamation-triangle"></i> Conexión perdida. Reintentando (${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS})...`;
+                    
+                    console.log(`Reintentando conexión ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}...`);
+                    
+                    setTimeout(() => {
+                        connectEventSource();
+                    }, RECONNECT_DELAY);
+                } else if (!isCompleted) {
+                    // Máximo de reintentos alcanzado
+                    document.getElementById('progressBar').classList.remove('progress-bar-animated');
+                    document.getElementById('progressBar').classList.add('bg-danger');
+                    document.getElementById('mensaje').className = 'alert alert-danger text-center';
+                    document.getElementById('mensaje').innerHTML = `
+                        <i class="fas fa-exclamation-circle"></i> Error de conexión después de ${MAX_RECONNECT_ATTEMPTS} intentos.
+                        <br><small>Los datos procesados hasta ahora (${lastProcessedCount}) han sido guardados.</small>
+                        <br><button onclick="location.reload()" class="btn btn-sm btn-warning mt-2">
+                            <i class="fas fa-redo"></i> Reintentar Importación
+                        </button>
+                    `;
+                    document.getElementById('resultado').style.display = 'block';
+                    document.querySelector('.spinner').style.display = 'none';
+                }
+            };
+        }
         
-        eventSource.onerror = function(error) {
-            console.error('EventSource error:', error);
-            eventSource.close();
-            document.getElementById('mensaje').className = 'alert alert-danger text-center';
-            document.getElementById('mensaje').innerHTML = '<i class="fas fa-exclamation-circle"></i> Error de conexión durante la importación';
-            document.getElementById('resultado').style.display = 'block';
-            document.querySelector('.spinner').style.display = 'none';
-        };
+        // Iniciar conexión
+        connectEventSource();
     </script>
 </body>
 </html>

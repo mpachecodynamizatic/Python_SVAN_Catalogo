@@ -8,6 +8,8 @@ from werkzeug.utils import secure_filename
 from io import BytesIO
 from PIL import Image as PILImage
 import tempfile
+import time
+from functools import wraps
 
 app = Flask(__name__)
 
@@ -27,6 +29,45 @@ app.secret_key = os.environ.get('SECRET_KEY', 'tu_clave_secreta_aqui')
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
+# Decorador para reintentos en operaciones de base de datos
+def retry_on_db_error(max_retries=5, delay=1, backoff=2):
+    """
+    Decorador para reintentar operaciones de base de datos en caso de error.
+    
+    Args:
+        max_retries: Número máximo de reintentos
+        delay: Tiempo de espera inicial entre reintentos (segundos)
+        backoff: Factor de incremento del delay en cada reintento
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            current_delay = delay
+            
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    retries += 1
+                    if retries >= max_retries:
+                        print(f"Error después de {max_retries} reintentos: {e}")
+                        raise
+                    
+                    print(f"Error en operación DB (reintento {retries}/{max_retries}): {e}")
+                    time.sleep(current_delay)
+                    current_delay *= backoff
+                    
+                    # Hacer rollback antes de reintentar
+                    try:
+                        db.session.rollback()
+                    except:
+                        pass
+            
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 db = SQLAlchemy(app)
 
@@ -373,13 +414,20 @@ def importar_stream():
             
             # Eliminar archivo temporal después de importar
             try:
-                os.remove(filepath)
+                if filepath:
+                    os.remove(filepath)
             except:
                 pass
         except Exception as e:
             yield f"data: {{\"error\": \"{str(e)}\"}}\n\n"
     
     return Response(generar(), mimetype='text/event-stream')
+
+# Función auxiliar para commits con retry
+@retry_on_db_error(max_retries=5, delay=0.5, backoff=2)
+def commit_with_retry():
+    """Ejecuta commit con reintentos automáticos"""
+    db.session.commit()
 
 def importar_productos_con_progreso(filepath):
     import json
@@ -417,12 +465,18 @@ def importar_productos_con_progreso(filepath):
                 if marca_original in marca_map:
                     try:
                         with db.session.no_autoflush:
-                            id_csv = int(row.get('id', 0))
-                            if Producto.query.filter_by(id_csv=id_csv).first():
+                            sku = row.get('Sku', '').strip()
+                            
+                            # Verificar si ya existe por SKU (más confiable)
+                            if sku and Producto.query.filter_by(sku=sku).first():
                                 omitidos += 1
                                 continue
                             
-                            sku = row.get('Sku', '').strip()
+                            # Si no existe por SKU, verificar por id_csv
+                            id_csv = int(row.get('id', 0))
+                            if id_csv and Producto.query.filter_by(id_csv=id_csv).first():
+                                omitidos += 1
+                                continue
                             # Generar URL de imagen
                             imagen_url = f"https://pim.gruposvan.com/multimedia/{sku}/800x600_imagen_principal.png" if sku else ''
                                 
@@ -454,7 +508,7 @@ def importar_productos_con_progreso(filepath):
                 # Enviar progreso cada 100 registros y hacer commit parcial
                 if procesados % 100 == 0:
                     try:
-                        db.session.commit()  # Commit parcial
+                        commit_with_retry()  # Commit parcial con retry
                     except Exception as e:
                         print(f"Error en commit: {e}")
                         db.session.rollback()
@@ -535,15 +589,31 @@ def importar_atributos_con_progreso(filepath):
                             producto = Producto.query.filter_by(id_csv=producto_id_csv).first()
                         
                         if producto:
-                            atributo = Atributo(
+                            # Verificar si el atributo ya existe para este producto
+                            atributo_nombre = row.get('Nombre', '').strip()
+                            atributo_valor = row.get('Valor', '').strip()
+                            
+                            # Buscar si ya existe este atributo para este producto
+                            atributo_existente = Atributo.query.filter_by(
                                 producto_id=producto.id,
-                                sku=producto.sku,  # Guardar el SKU del producto
-                                atributo=row.get('Nombre', '').strip(),
-                                valor=row.get('Valor', '').strip(),
-                                orden=int(row.get('OrdenEnGrupo', 0) or 0)  # Campo OrdenEnGrupo del CSV
-                            )
-                            db.session.add(atributo)
-                            importados += 1
+                                atributo=atributo_nombre,
+                                valor=atributo_valor
+                            ).first()
+                            
+                            if atributo_existente:
+                                # Ya existe, lo saltamos
+                                omitidos += 1
+                            else:
+                                # No existe, lo creamos
+                                atributo = Atributo(
+                                    producto_id=producto.id,
+                                    sku=producto.sku,  # Guardar el SKU del producto
+                                    atributo=atributo_nombre,
+                                    valor=atributo_valor,
+                                    orden=int(row.get('OrdenEnGrupo', 0) or 0)  # Campo OrdenEnGrupo del CSV
+                                )
+                                db.session.add(atributo)
+                                importados += 1
                         else:
                             omitidos += 1
                 except Exception as e:
@@ -555,7 +625,7 @@ def importar_atributos_con_progreso(filepath):
                 # Enviar progreso cada 100 registros y hacer commit parcial
                 if procesados % 100 == 0:
                     try:
-                        db.session.commit()  # Commit parcial
+                        commit_with_retry()  # Commit parcial con retry
                     except Exception as e:
                         print(f"Error en commit: {e}")
                         db.session.rollback()
@@ -582,7 +652,7 @@ def importar_atributos_con_progreso(filepath):
                 })
         
         try:
-            db.session.commit()
+            commit_with_retry()  # Commit final con retry
         except Exception as e:
             print(f"Error en commit final: {e}")
             db.session.rollback()
@@ -624,10 +694,10 @@ def importar_datos_manuales_con_progreso():
     
     if total == 0:
         yield json.dumps({
-            'tipo': 'fin',
+            'tipo': 'completado',
             'mensaje': f'Todos los productos ({total_productos}) ya tienen datos manuales',
-            'creados': 0,
-            'saltados': saltados
+            'importados': 0,
+            'omitidos': saltados
         })
         return
     
@@ -667,14 +737,18 @@ def importar_datos_manuales_con_progreso():
             db.session.add(nuevo_dato)
             creados += 1
             
-            db.session.commit()
+            commit_with_retry()  # Commit con retry
             
             # Enviar progreso cada 5 productos o al final
             if i % 5 == 0 or i == total:
+                porcentaje = int((i / total) * 100)
                 yield json.dumps({
                     'tipo': 'progreso',
-                    'actual': i,
+                    'porcentaje': porcentaje,
+                    'procesados': i,
                     'total': total,
+                    'importados': creados,
+                    'omitidos': saltados,
                     'mensaje': f'Creando datos {i}/{total} - SKU: {producto.sku}'
                 })
         
@@ -686,10 +760,10 @@ def importar_datos_manuales_con_progreso():
             continue
     
     yield json.dumps({
-        'tipo': 'fin',
+        'tipo': 'completado',
         'mensaje': f'Completado: {creados} nuevos creados, {saltados} saltados (ya existían)',
-        'creados': creados,
-        'saltados': saltados
+        'importados': creados,
+        'omitidos': saltados
     })
 
 @app.route('/eliminar_datos')
