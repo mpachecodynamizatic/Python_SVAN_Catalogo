@@ -15,14 +15,7 @@ app = Flask(__name__)
 
 # Configuration
 # Ensure instance folder exists
-# En Render, el disco persistente está montado en /opt/render/project/src/instance
-if os.environ.get('RENDER'):
-    # En producción (Render), usar el disco persistente
-    instance_path = '/opt/render/project/src/instance'
-else:
-    # En desarrollo local
-    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
-
+instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
 os.makedirs(instance_path, exist_ok=True)
 
 db_path = os.environ.get('DATABASE_URL')
@@ -200,11 +193,10 @@ class DatosManuales(db.Model):
     def __repr__(self):
         return f'<DatosManuales {self.sku}>'
 
-# La base de datos se crea en build.sh durante el deployment
-# En desarrollo local se crea al ejecutar la app
-if not os.environ.get('RENDER'):
-    with app.app_context():
-        db.create_all()
+# Crear la base de datos si no existe
+# db.create_all() solo crea tablas que no existen, NO borra datos
+with app.app_context():
+    db.create_all()
 
 @app.route('/')
 def index():
@@ -1160,6 +1152,26 @@ def add_tarjeta(ficha_id, marca):
     if not producto_id:
         flash('Debe seleccionar un producto', 'error')
         return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+    
+    # Buscar el producto
+    producto = Producto.query.get(int(producto_id))
+    
+    if not producto:
+        flash('Producto no encontrado', 'error')
+        return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+    
+    # Crear la tarjeta
+    nueva_tarjeta = Tarjeta(
+        ficha_id=ficha.id,
+        marca=marca,
+        producto_id=producto.id
+    )
+    
+    db.session.add(nueva_tarjeta)
+    db.session.commit()
+    
+    flash(f'Tarjeta agregada: {producto.sku} - {producto.descripcion}', 'success')
+    return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
 
 # ===================================================================
 # FUNCIONALIDAD DE EXPORTACIÓN A PDF ELIMINADA

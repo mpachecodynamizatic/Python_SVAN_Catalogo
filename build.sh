@@ -19,9 +19,12 @@ import os
 try:
     from app import app, db
     
-    db_file = '/opt/render/project/src/instance/catalogos_nuevo.db'
+    # Verificar si existe el archivo de BD
+    instance_path = os.path.join(os.path.dirname(os.path.abspath('app.py')), 'instance')
+    db_file = os.path.join(instance_path, 'catalogos_nuevo.db')
+    
     if os.path.exists(db_file):
-        print(f'Database file exists at {db_file} - preserving existing data')
+        print(f'Database file exists - preserving existing data')
         file_size = os.path.getsize(db_file)
         print(f'Database size: {file_size} bytes')
     else:
@@ -32,5 +35,5 @@ try:
         print('Database tables initialized successfully (existing data preserved)')
 except Exception as e:
     print(f'Warning: Database initialization failed: {e}')
-    print('This may be normal for first deployment')
+    print('The app will try to initialize on first run')
 END
