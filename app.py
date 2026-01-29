@@ -852,6 +852,62 @@ def add_catalogo():
     db.session.commit()
     return redirect(url_for('index'))
 
+@app.route('/copiar_catalogo', methods=['POST'])
+def copiar_catalogo():
+    catalogo_origen_id = request.form['catalogo_origen']
+    codigo = request.form['codigo']
+    descripcion = request.form['descripcion']
+    
+    # Obtener catálogo origen
+    catalogo_origen = Catalogo.query.get_or_404(catalogo_origen_id)
+    
+    # Crear nuevo catálogo copiando las marcas del origen
+    nuevo_catalogo = Catalogo(codigo=codigo, descripcion=descripcion, marcas=catalogo_origen.marcas)
+    db.session.add(nuevo_catalogo)
+    db.session.flush()  # Para obtener el ID del nuevo catálogo
+    
+    # Copiar categorías, subcategorías y fichas
+    for categoria in catalogo_origen.categorias:
+        nueva_categoria = Categoria(
+            catalogo_id=nuevo_catalogo.id,
+            cod_categoria=categoria.cod_categoria,
+            descripcion=categoria.descripcion
+        )
+        db.session.add(nueva_categoria)
+        db.session.flush()
+        
+        # Copiar subcategorías
+        for subcategoria in categoria.subcategorias:
+            nueva_subcategoria = Subcategoria(
+                categoria_id=nueva_categoria.id,
+                cod_categoria=subcategoria.cod_categoria,
+                descripcion=subcategoria.descripcion
+            )
+            db.session.add(nueva_subcategoria)
+            db.session.flush()
+            
+            # Copiar fichas
+            for ficha in subcategoria.fichas:
+                nueva_ficha = Ficha(
+                    subcategoria_id=nueva_subcategoria.id,
+                    fila_numero=ficha.fila_numero
+                )
+                db.session.add(nueva_ficha)
+                db.session.flush()
+                
+                # Copiar tarjetas de la ficha
+                for tarjeta in ficha.tarjetas:
+                    nueva_tarjeta = Tarjeta(
+                        ficha_id=nueva_ficha.id,
+                        marca=tarjeta.marca,
+                        producto_id=tarjeta.producto_id
+                    )
+                    db.session.add(nueva_tarjeta)
+    
+    db.session.commit()
+    flash(f'Catálogo copiado exitosamente: {codigo} (con marcas: {catalogo_origen.marcas})', 'success')
+    return redirect(url_for('index'))
+
 @app.route('/delete/<int:id>')
 def delete_catalogo(id):
     catalogo = Catalogo.query.get_or_404(id)
@@ -1172,6 +1228,15 @@ def add_tarjeta(ficha_id, marca):
     
     flash(f'Tarjeta agregada: {producto.sku} - {producto.descripcion}', 'success')
     return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+
+@app.route('/delete_tarjeta/<int:id>')
+def delete_tarjeta(id):
+    tarjeta = Tarjeta.query.get_or_404(id)
+    subcategoria_id = tarjeta.ficha.subcategoria_id
+    db.session.delete(tarjeta)
+    db.session.commit()
+    flash('Tarjeta eliminada correctamente.', 'success')
+    return redirect(url_for('fichas', subcategoria_id=subcategoria_id))
 
 # ===================================================================
 # FUNCIONALIDAD DE EXPORTACIÓN A PDF ELIMINADA

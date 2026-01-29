@@ -83,6 +83,35 @@
                 </div>
             </div>
             
+            <!-- Cuadro de registros totales en BD -->
+            <div id="conteosFinales" class="mt-4">
+                <hr>
+                <h5 class="text-center mb-3"><i class="fas fa-database"></i> Total de Registros en Base de Datos</h5>
+                <div class="row text-center">
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 bg-white">
+                            <i class="fas fa-box fa-2x text-primary mb-2"></i>
+                            <h5>Productos</h5>
+                            <h3 id="totalProductos" class="text-primary"><span class="spinner-border spinner-border-sm"></span></h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 bg-white">
+                            <i class="fas fa-tags fa-2x text-success mb-2"></i>
+                            <h5>Atributos</h5>
+                            <h3 id="totalAtributos" class="text-success"><span class="spinner-border spinner-border-sm"></span></h3>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="border rounded p-3 bg-white">
+                            <i class="fas fa-clipboard-list fa-2x text-warning mb-2"></i>
+                            <h5>Datos Manuales</h5>
+                            <h3 id="totalDatosManuales" class="text-warning"><span class="spinner-border spinner-border-sm"></span></h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
             <div id="resultado" class="mt-4 text-center" style="display: none;">
                 <button onclick="window.location.href='{{ url_for('index') }}'" class="btn btn-primary btn-lg">
                     <i class="fas fa-home"></i> Volver al Inicio
@@ -146,6 +175,9 @@
                     document.getElementById('mensaje').innerHTML = '<i class="fas fa-check-circle"></i> ' + data.mensaje;
                     document.getElementById('resultado').style.display = 'block';
                     document.querySelector('.spinner').style.display = 'none';
+                    
+                    // Actualizar conteos finales
+                    cargarConteosFinales();
                 }
                 else if (data.tipo === 'error') {
                     isCompleted = true;
@@ -192,8 +224,35 @@
             };
         }
         
+        // Función para cargar los conteos finales de la base de datos
+        function cargarConteosFinales() {
+            fetch('{{ url_for("importar_conteos") }}')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        console.error('Error al cargar conteos:', data.error);
+                        document.getElementById('totalProductos').textContent = 'Error';
+                        document.getElementById('totalAtributos').textContent = 'Error';
+                        document.getElementById('totalDatosManuales').textContent = 'Error';
+                    } else {
+                        document.getElementById('totalProductos').textContent = data.productos.toLocaleString('es-ES');
+                        document.getElementById('totalAtributos').textContent = data.atributos.toLocaleString('es-ES');
+                        document.getElementById('totalDatosManuales').textContent = data.datos_manuales.toLocaleString('es-ES');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('totalProductos').textContent = 'Error';
+                    document.getElementById('totalAtributos').textContent = 'Error';
+                    document.getElementById('totalDatosManuales').textContent = 'Error';
+                });
+        }
+        
         // Iniciar conexión
         connectEventSource();
+        
+        // Cargar conteos iniciales al cargar la página
+        cargarConteosFinales();
     </script>
 </body>
 </html>

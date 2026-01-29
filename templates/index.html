@@ -36,6 +36,7 @@
             </ol>
         </nav>
         <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Catálogo</button>
+        <button class="btn btn-success mb-3" data-bs-toggle="modal" data-bs-target="#copyModal">Copiar Catálogo</button>
         <a href="{{ url_for('productos') }}" class="btn btn-info mb-3">Productos</a>
         <a href="{{ url_for('productos_atributos') }}" class="btn btn-warning mb-3">Productos-Atributos</a>
         <a href="{{ url_for('datos_manuales') }}" class="btn btn-secondary mb-3">Datos Manuales</a>
@@ -115,6 +116,48 @@
                     <div class="modal-footer">
                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
                         <button type="submit" class="btn btn-primary">Añadir</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para Copiar Catálogo -->
+    <div class="modal fade" id="copyModal" tabindex="-1" aria-labelledby="copyModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="copyModalLabel">Copiar Catálogo</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('copiar_catalogo') }}">
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label for="catalogo_origen" class="form-label">Catálogo Origen</label>
+                            <select class="form-select" id="catalogo_origen" name="catalogo_origen" required>
+                                <option value="">Seleccionar catálogo a copiar...</option>
+                                {% for catalogo in catalogos %}
+                                <option value="{{ catalogo.id }}">{{ catalogo.codigo }} - {{ catalogo.descripcion }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <hr>
+                        <h6 class="text-muted">Datos del Nuevo Catálogo</h6>
+                        <div class="mb-3">
+                            <label for="codigo_nuevo" class="form-label">Código</label>
+                            <input type="text" class="form-control" id="codigo_nuevo" name="codigo" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="descripcion_nuevo" class="form-label">Descripción</label>
+                            <input type="text" class="form-control" id="descripcion_nuevo" name="descripcion" required>
+                        </div>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle"></i> Se copiarán todas las categorías, subcategorías, fichas y las <strong>marcas del catálogo origen</strong>.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="submit" class="btn btn-success">Copiar Catálogo</button>
                     </div>
                 </form>
             </div>
@@ -201,6 +244,16 @@
                 updateMarcasList();
                 updateHiddenField();
                 marcaSelect.value = '';
+            });
+        });
+
+        // JavaScript para modal de copiar catálogo
+        document.addEventListener('DOMContentLoaded', function() {
+            // Limpiar al cerrar el modal
+            document.getElementById('copyModal').addEventListener('hidden.bs.modal', function() {
+                document.getElementById('catalogo_origen').value = '';
+                document.getElementById('codigo_nuevo').value = '';
+                document.getElementById('descripcion_nuevo').value = '';
             });
         });
     </script>
