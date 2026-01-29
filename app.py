@@ -454,6 +454,10 @@ def importar_productos_con_progreso(filepath):
         
         yield json.dumps({'tipo': 'inicio', 'total': total, 'mensaje': f'Iniciando importación de {total} productos...'})
         
+        # Cargar SKUs existentes en memoria para optimizar consultas
+        skus_existentes = {p.sku for p in Producto.query.with_entities(Producto.sku).all() if p.sku}
+        ids_existentes = {p.id_csv for p in Producto.query.with_entities(Producto.id_csv).all() if p.id_csv}
+        
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f, delimiter=';')
             procesados = 0
@@ -467,14 +471,14 @@ def importar_productos_con_progreso(filepath):
                         with db.session.no_autoflush:
                             sku = row.get('Sku', '').strip()
                             
-                            # Verificar si ya existe por SKU (más confiable)
-                            if sku and Producto.query.filter_by(sku=sku).first():
+                            # Verificar si ya existe por SKU en memoria (más rápido)
+                            if sku and sku in skus_existentes:
                                 omitidos += 1
                                 continue
                             
-                            # Si no existe por SKU, verificar por id_csv
+                            # Si no existe por SKU, verificar por id_csv en memoria
                             id_csv = int(row.get('id', 0))
-                            if id_csv and Producto.query.filter_by(id_csv=id_csv).first():
+                            if id_csv and id_csv in ids_existentes:
                                 omitidos += 1
                                 continue
                             # Generar URL de imagen
@@ -496,6 +500,11 @@ def importar_productos_con_progreso(filepath):
                                 imagen=imagen_url
                             )
                             db.session.add(producto)
+                            # Agregar a sets en memoria
+                            if sku:
+                                skus_existentes.add(sku)
+                            if id_csv:
+                                ids_existentes.add(id_csv)
                             importados += 1
                     except Exception as e:
                         print(f"Error importando producto: {e}")
@@ -504,6 +513,10 @@ def importar_productos_con_progreso(filepath):
                         continue
                 else:
                     omitidos += 1
+                
+                # Keep-alive cada 2 productos
+                if procesados % 2 == 0:
+                    yield json.dumps({'tipo': 'heartbeat'}) + '\n\n'
                 
                 # Enviar progreso cada 100 registros y hacer commit parcial
                 if procesados % 100 == 0:
@@ -567,6 +580,19 @@ def importar_atributos_con_progreso(filepath):
         
         yield json.dumps({'tipo': 'inicio', 'total': total, 'mensaje': f'Iniciando importación de {total} atributos...'})
         
+        # Cargar atributos existentes en memoria para optimizar consultas
+        # Estructura: {(producto_id, atributo, valor): True}
+        atributos_existentes = {
+            (a.producto_id, a.atributo, a.valor): True 
+            for a in Atributo.query.with_entities(
+                Atributo.producto_id, Atributo.atributo, Atributo.valor
+            ).all()
+        }
+        
+        # También cargar SKUs de productos para búsqueda rápida
+        productos_por_sku = {p.sku: p.id for p in Producto.query.with_entities(Producto.sku, Producto.id).all() if p.sku}
+        productos_por_id_csv = {p.id_csv: p.id for p in Producto.query.with_entities(Producto.id_csv, Producto.id).all() if p.id_csv}
+        
         with open(filepath, 'r', encoding='utf-8-sig') as f:
             reader = csv.DictReader(f, delimiter=';')
             procesados = 0
@@ -577,42 +603,46 @@ def importar_atributos_con_progreso(filepath):
                     with db.session.no_autoflush:
                         # Primero intentar buscar por SKU si existe en el CSV
                         sku = row.get('SKU', '').strip()
-                        producto = None
+                        producto_id_db = None
+                        sku_producto = None
                         
-                        if sku:
-                            # Buscar por SKU directamente
-                            producto = Producto.query.filter_by(sku=sku).first()
+                        if sku and sku in productos_por_sku:
+                            # Buscar por SKU en memoria
+                            producto_id_db = productos_por_sku[sku]
+                            sku_producto = sku
                         
                         # Si no se encontró por SKU, buscar por ProductoId
-                        if not producto:
+                        if not producto_id_db:
                             producto_id_csv = int(row.get('ProductoId', 0))
-                            producto = Producto.query.filter_by(id_csv=producto_id_csv).first()
+                            if producto_id_csv in productos_por_id_csv:
+                                producto_id_db = productos_por_id_csv[producto_id_csv]
+                                # Obtener SKU del producto
+                                producto = Producto.query.get(producto_id_db)
+                                if producto:
+                                    sku_producto = producto.sku
                         
-                        if producto:
+                        if producto_id_db:
                             # Verificar si el atributo ya existe para este producto
                             atributo_nombre = row.get('Nombre', '').strip()
                             atributo_valor = row.get('Valor', '').strip()
                             
-                            # Buscar si ya existe este atributo para este producto
-                            atributo_existente = Atributo.query.filter_by(
-                                producto_id=producto.id,
-                                atributo=atributo_nombre,
-                                valor=atributo_valor
-                            ).first()
-                            
-                            if atributo_existente:
+                            # Buscar en memoria si ya existe este atributo
+                            clave_atributo = (producto_id_db, atributo_nombre, atributo_valor)
+                            if clave_atributo in atributos_existentes:
                                 # Ya existe, lo saltamos
                                 omitidos += 1
                             else:
                                 # No existe, lo creamos
                                 atributo = Atributo(
-                                    producto_id=producto.id,
-                                    sku=producto.sku,  # Guardar el SKU del producto
+                                    producto_id=producto_id_db,
+                                    sku=sku_producto,  # Guardar el SKU del producto
                                     atributo=atributo_nombre,
                                     valor=atributo_valor,
                                     orden=int(row.get('OrdenEnGrupo', 0) or 0)  # Campo OrdenEnGrupo del CSV
                                 )
                                 db.session.add(atributo)
+                                # Agregar a memoria
+                                atributos_existentes[clave_atributo] = True
                                 importados += 1
                         else:
                             omitidos += 1
@@ -621,6 +651,10 @@ def importar_atributos_con_progreso(filepath):
                     db.session.rollback()  # Rollback en caso de error
                     omitidos += 1
                     continue
+                
+                # Keep-alive cada 2 atributos
+                if procesados % 2 == 0:
+                    yield json.dumps({'tipo': 'heartbeat'}) + '\n\n'
                 
                 # Enviar progreso cada 100 registros y hacer commit parcial
                 if procesados % 100 == 0:
@@ -661,7 +695,7 @@ def importar_atributos_con_progreso(filepath):
             'tipo': 'completado',
             'importados': importados,
             'omitidos': omitidos,
-            'mensaje': f'Importados {importados} atributos. Omitidos {omitidos} (productos no encontrados).'
+            'mensaje': f'Importados {importados} atributos. Omitidos {omitidos} (duplicados o productos no encontrados).'
         })
     except Exception as e:
         db.session.rollback()
@@ -738,6 +772,10 @@ def importar_datos_manuales_con_progreso():
             creados += 1
             
             commit_with_retry()  # Commit con retry
+            
+            # Keep-alive cada 2 productos
+            if i % 2 == 0:
+                yield json.dumps({'tipo': 'heartbeat'}) + '\n\n'
             
             # Enviar progreso cada 5 productos o al final
             if i % 5 == 0 or i == total:
