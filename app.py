@@ -16,12 +16,27 @@ app = Flask(__name__)
 
 # Configuration
 # Ensure instance folder exists
-instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
-os.makedirs(instance_path, exist_ok=True)
+# En Render, usar el disco persistente montado; localmente, usar carpeta instance
+instance_path = os.environ.get('RENDER_INSTANCE_PATH', 
+                                os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
+
+# Solo crear la carpeta si no existe (en Render, ya estará montada)
+if not os.path.exists(instance_path):
+    os.makedirs(instance_path, exist_ok=True)
+    print(f"📁 Carpeta instance creada en: {instance_path}")
+else:
+    print(f"✅ Carpeta instance encontrada en: {instance_path}")
 
 db_path = os.environ.get('DATABASE_URL')
 if not db_path:
-    db_path = f"sqlite:///{os.path.join(instance_path, 'catalogos_nuevo.db')}"
+    db_file_path = os.path.join(instance_path, 'catalogos_nuevo.db')
+    db_path = f"sqlite:///{db_file_path}"
+    print(f"🗄️  Ruta de base de datos: {db_file_path}")
+    if os.path.exists(db_file_path):
+        size = os.path.getsize(db_file_path)
+        print(f"✅ Base de datos existente encontrada. Tamaño: {size:,} bytes")
+    else:
+        print(f"⚠️  Base de datos no existe aún. Se creará en: {db_file_path}")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -280,7 +295,10 @@ def productos():
     # Crear lista de tuplas (producto, num_atributos)
     productos_con_conteo = [(p, int(count)) for p, count in pagination.items]
     
-    return render_template('productos.html', productos=productos_con_conteo, buscar=buscar, pagination=pagination)
+    # Obtener total de productos
+    total_productos = Producto.query.count()
+    
+    return render_template('productos.html', productos=productos_con_conteo, buscar=buscar, pagination=pagination, total_productos=total_productos)
 
 @app.route('/productos_atributos')
 @login_required

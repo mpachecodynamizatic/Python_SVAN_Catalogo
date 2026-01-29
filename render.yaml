@@ -14,6 +14,8 @@ services:
         generateValue: true
       - key: FLASK_ENV
         value: production
+      - key: RENDER_INSTANCE_PATH
+        value: /opt/render/project/src/instance
     disk:
       name: catalog-data
       mountPath: /opt/render/project/src/instance
