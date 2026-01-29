@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, Response
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, Response, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
@@ -13,12 +13,20 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from PIL import Image as PILImage
+from html2image import Html2Image
+import tempfile
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///catalogos_nuevo.db'
+
+# Configuration
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///catalogos_nuevo.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['UPLOAD_FOLDER'] = 'static/uploads'
-app.secret_key = 'tu_clave_secreta_aqui'  # Necesaria para flash messages
+app.config['UPLOAD_FOLDER'] = os.environ.get('UPLOAD_FOLDER', 'static/uploads')
+app.secret_key = os.environ.get('SECRET_KEY', 'tu_clave_secreta_aqui')
+
+# Ensure upload folder exists
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+
 db = SQLAlchemy(app)
 
 # Diccionario de subcategorías por categoría padre
@@ -969,10 +977,84 @@ def delete_tarjeta(id):
     ficha = Ficha.query.get(ficha_id)
     return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
 
+def renderizar_tarjeta_como_imagen(producto, dm):
+    """Renderiza una tarjeta como imagen HTML usando html2image"""
+    # Preparar atributos
+    atributos = [attr for attr in producto.atributos if attr.valor]
+    
+    # Renderizar HTML
+    html_content = render_template('tarjeta_pdf.html', 
+                                   producto=producto, 
+                                   datos_manuales=dm,
+                                   atributos=atributos)
+    
+    # Crear directorio temporal
+    temp_dir = tempfile.mkdtemp()
+    
+    try:
+        # Inicializar html2image con mayor resolución
+        # Usamos tamaño más grande para mejor calidad (se escalará después)
+        hti = Html2Image(output_path=temp_dir, size=(1200, 900))
+        
+        # Generar imagen
+        image_path = hti.screenshot(html_str=html_content, save_as='tarjeta.png')
+        
+        # Leer la imagen generada
+        if isinstance(image_path, list) and len(image_path) > 0:
+            full_path = os.path.join(temp_dir, image_path[0])
+        else:
+            full_path = os.path.join(temp_dir, 'tarjeta.png')
+        
+        # Abrir con PIL y convertir a BytesIO
+        img = PILImage.open(full_path)
+        
+        # Recortar la imagen para eliminar espacios en blanco
+        # Convertir a RGB si es necesario
+        if img.mode in ('RGBA', 'LA', 'P'):
+            background = PILImage.new('RGB', img.size, (255, 255, 255))
+            if img.mode == 'P':
+                img = img.convert('RGBA')
+            background.paste(img, mask=img.split()[-1] if img.mode in ('RGBA', 'LA') else None)
+            img = background
+        
+        img_buffer = BytesIO()
+        img.save(img_buffer, format='PNG', quality=95, dpi=(300, 300))
+        img_buffer.seek(0)
+        
+        return img_buffer
+    except Exception as e:
+        print(f"Error generando imagen de tarjeta: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+    finally:
+        # Limpiar archivos temporales
+        try:
+            import shutil
+            shutil.rmtree(temp_dir)
+        except:
+            pass
+
 def crear_tarjeta_pdf(producto, dm, ancho_col):
-    """Crea una tabla con el diseño de 4 bloques de la tarjeta"""
+    """Crea una imagen de la tarjeta para insertar en el PDF"""
     styles = getSampleStyleSheet()
     
+    # Intentar renderizar como imagen
+    img_buffer = renderizar_tarjeta_como_imagen(producto, dm)
+    
+    if img_buffer:
+        # Usar la imagen renderizada
+        try:
+            # Calcular dimensiones proporcionales para mantener aspect ratio
+            altura_tarjeta = 6*cm
+            img_element = RLImage(img_buffer, width=ancho_col*0.95, height=altura_tarjeta)
+            return img_element
+        except Exception as e:
+            print(f"Error creando imagen para PDF: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    # Fallback: crear tarjeta con ReportLab (código original)
     # Descargar imagen si existe
     img_element = None
     if producto.imagen:

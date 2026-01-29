@@ -3,3 +3,6 @@ SQLAlchemy==1.4.46
 Flask-SQLAlchemy==2.5.1
 requests
 reportlab
+Pillow
+html2image
+gunicorn==21.2.0
