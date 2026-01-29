@@ -14,7 +14,9 @@ services:
         generateValue: true
       - key: FLASK_ENV
         value: production
+      - key: RENDER
+        value: true
     disk:
       name: catalog-data
       mountPath: /opt/render/project/src/instance
-      sizeGB: 1
+      sizeGB: 1  # Disco persistente - los datos NO se borran entre deployments

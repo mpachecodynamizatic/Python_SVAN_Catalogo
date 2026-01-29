@@ -15,7 +15,14 @@ app = Flask(__name__)
 
 # Configuration
 # Ensure instance folder exists
-instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+# En Render, el disco persistente está montado en /opt/render/project/src/instance
+if os.environ.get('RENDER'):
+    # En producción (Render), usar el disco persistente
+    instance_path = '/opt/render/project/src/instance'
+else:
+    # En desarrollo local
+    instance_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance')
+
 os.makedirs(instance_path, exist_ok=True)
 
 db_path = os.environ.get('DATABASE_URL')
@@ -193,9 +200,11 @@ class DatosManuales(db.Model):
     def __repr__(self):
         return f'<DatosManuales {self.sku}>'
 
-# Crear la base de datos si no existe
-with app.app_context():
-    db.create_all()
+# La base de datos se crea en build.sh durante el deployment
+# En desarrollo local se crea al ejecutar la app
+if not os.environ.get('RENDER'):
+    with app.app_context():
+        db.create_all()
 
 @app.route('/')
 def index():
@@ -344,6 +353,20 @@ def eliminar_atributo(id):
     db.session.commit()
     flash('Atributo eliminado correctamente.')
     return redirect(url_for('producto_atributos', id=producto_id))
+
+@app.route('/importar/conteos')
+def importar_conteos():
+    """Devuelve los conteos de registros existentes en la base de datos"""
+    import json
+    try:
+        conteos = {
+            'productos': Producto.query.count(),
+            'atributos': Atributo.query.count(),
+            'datos_manuales': DatosManuales.query.count()
+        }
+        return json.dumps(conteos)
+    except Exception as e:
+        return json.dumps({'error': str(e)}), 500
 
 @app.route('/importar', methods=['GET', 'POST'])
 def importar():
