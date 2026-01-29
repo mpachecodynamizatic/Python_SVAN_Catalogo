@@ -110,8 +110,11 @@
                         </span>
                     </td>
                     <td>
-                        <a href="{{ url_for('producto_atributos', id=producto.id) }}" class="btn btn-sm btn-info">
-                            <i class="fas fa-list"></i> Ver
+                        <a href="{{ url_for('ver_producto', id=producto.id) }}" class="btn btn-sm btn-primary" title="Ver detalle del producto">
+                            <i class="fas fa-eye"></i> Ver
+                        </a>
+                        <a href="{{ url_for('producto_atributos', id=producto.id) }}" class="btn btn-sm btn-info" title="Ver atributos">
+                            <i class="fas fa-list"></i> Atributos
                         </a>
                         <button class="btn btn-sm btn-danger" onclick="confirmarEliminacion({{ producto.id }})">
                             <i class="fas fa-trash"></i> Eliminar
@@ -121,6 +124,58 @@
                 {% endfor %}
             </tbody>
         </table>
+        
+        <!-- Paginación -->
+        {% if pagination.pages > 1 %}
+        <nav aria-label="Paginación de productos">
+            <ul class="pagination justify-content-center">
+                <!-- Primer página -->
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('productos', page=1, buscar=buscar) if pagination.has_prev else '#' }}">
+                        <i class="fas fa-angle-double-left"></i>
+                    </a>
+                </li>
+                
+                <!-- Página anterior -->
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('productos', page=pagination.prev_num, buscar=buscar) if pagination.has_prev else '#' }}">
+                        <i class="fas fa-angle-left"></i>
+                    </a>
+                </li>
+                
+                <!-- Páginas numeradas -->
+                {% for page_num in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('productos', page=page_num, buscar=buscar) }}">{{ page_num }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">...</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+                
+                <!-- Página siguiente -->
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('productos', page=pagination.next_num, buscar=buscar) if pagination.has_next else '#' }}">
+                        <i class="fas fa-angle-right"></i>
+                    </a>
+                </li>
+                
+                <!-- Última página -->
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('productos', page=pagination.pages, buscar=buscar) if pagination.has_next else '#' }}">
+                        <i class="fas fa-angle-double-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <div class="text-center text-muted mb-3">
+            <small>Mostrando {{ pagination.items|length }} de {{ pagination.total }} productos (Página {{ pagination.page }} de {{ pagination.pages }})</small>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Modal de confirmación de eliminación -->

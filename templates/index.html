@@ -37,6 +37,7 @@
         </nav>
         <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Catálogo</button>
         <a href="{{ url_for('productos') }}" class="btn btn-info mb-3">Productos</a>
+        <a href="{{ url_for('productos_atributos') }}" class="btn btn-warning mb-3">Productos-Atributos</a>
         <a href="{{ url_for('importar') }}" class="btn btn-success mb-3">Importar Datos</a>
         <button class="btn btn-danger mb-3" data-bs-toggle="modal" data-bs-target="#deleteModal">Eliminar Datos</button>
         {% with messages = get_flashed_messages() %}

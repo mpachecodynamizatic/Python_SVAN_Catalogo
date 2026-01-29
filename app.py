@@ -100,6 +100,7 @@ class Producto(db.Model):
     clasificacion = db.Column(db.String(50))
     color = db.Column(db.String(100))
     dimensiones = db.Column(db.String(100))
+    imagen = db.Column(db.String(500))  # URL de la imagen del producto
     
     def __repr__(self):
         return f'<Producto {self.sku}>'
@@ -107,6 +108,7 @@ class Producto(db.Model):
 class Atributo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     producto_id = db.Column(db.Integer, db.ForeignKey('producto.id'), nullable=False)
+    sku = db.Column(db.String(50))  # SKU del producto (redundante para facilitar búsquedas)
     atributo = db.Column(db.String(100), nullable=False)
     valor = db.Column(db.String(200), nullable=False)
     orden = db.Column(db.Integer, nullable=False, default=0, server_default='0')  # Campo para ordenar atributos
@@ -131,6 +133,8 @@ def index():
 def productos():
     from sqlalchemy import func
     buscar = request.args.get('buscar', '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 50  # Productos por página
     
     # Subconsulta para contar atributos
     atributos_count = db.session.query(
@@ -156,11 +160,59 @@ def productos():
             atributos_count, Producto.id == atributos_count.c.producto_id
         )
     
-    resultados = query.all()
+    # Aplicar paginación
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
     # Crear lista de tuplas (producto, num_atributos)
-    productos_con_conteo = [(p, int(count)) for p, count in resultados]
+    productos_con_conteo = [(p, int(count)) for p, count in pagination.items]
     
-    return render_template('productos.html', productos=productos_con_conteo, buscar=buscar)
+    return render_template('productos.html', productos=productos_con_conteo, buscar=buscar, pagination=pagination)
+
+@app.route('/productos_atributos')
+def productos_atributos():
+    from sqlalchemy import func
+    buscar = request.args.get('buscar', '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 100  # Atributos por página
+    
+    # Query con join a Producto para mostrar información completa
+    query = db.session.query(Atributo, Producto).join(
+        Producto, Atributo.producto_id == Producto.id
+    )
+    
+    if buscar:
+        # Buscar en nombre del atributo, valor, SKU del producto, marca, SKU del atributo
+        query = query.filter(
+            db.or_(
+                Atributo.atributo.like(f'%{buscar}%'),
+                Atributo.valor.like(f'%{buscar}%'),
+                Atributo.sku.like(f'%{buscar}%'),
+                Producto.sku.like(f'%{buscar}%'),
+                Producto.marca.like(f'%{buscar}%'),
+                Producto.titulo.like(f'%{buscar}%')
+            )
+        )
+    
+    # Ordenar por producto y orden
+    query = query.order_by(Producto.sku, Atributo.orden)
+    
+    # Aplicar paginación
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    atributos_con_producto = [(atributo, producto) for atributo, producto in pagination.items]
+    
+    # Contar total de atributos
+    total_atributos = Atributo.query.count()
+    
+    return render_template('productos_atributos.html', 
+                         atributos=atributos_con_producto, 
+                         buscar=buscar, 
+                         pagination=pagination,
+                         total_atributos=total_atributos)
+
+@app.route('/ver_producto/<int:id>')
+def ver_producto(id):
+    producto = Producto.query.get_or_404(id)
+    atributos = Atributo.query.filter_by(producto_id=id).order_by(Atributo.orden).all()
+    return render_template('ver_producto.html', producto=producto, atributos=atributos)
 
 @app.route('/producto/<int:id>/atributos')
 def producto_atributos(id):
@@ -295,12 +347,16 @@ def importar_productos_con_progreso(filepath):
                             if Producto.query.filter_by(id_csv=id_csv).first():
                                 omitidos += 1
                                 continue
+                            
+                            sku = row.get('Sku', '').strip()
+                            # Generar URL de imagen
+                            imagen_url = f"https://pim.gruposvan.com/multimedia/{sku}/800x600_imagen_principal.png" if sku else ''
                                 
                             producto = Producto(
                                 id_csv=id_csv,
                                 marca=marca_map[marca_original],
                                 producto_id=row.get('ProductoId', '').strip(),
-                                sku=row.get('Sku', '').strip(),
+                                sku=sku,
                                 ean=row.get('Ean', '').strip(),
                                 descripcion=row.get('Descripcion', '').strip(),
                                 titulo=row.get('Titulo', '').strip(),
@@ -308,7 +364,8 @@ def importar_productos_con_progreso(filepath):
                                 estado_referencia=row.get('EstadoReferencia', '').strip(),
                                 clasificacion=row.get('Clasificacion', '').strip(),
                                 color=row.get('Color', '').strip(),
-                                dimensiones=row.get('Dimensiones', '').strip()
+                                dimensiones=row.get('Dimensiones', '').strip(),
+                                imagen=imagen_url
                             )
                             db.session.add(producto)
                             importados += 1
@@ -390,12 +447,23 @@ def importar_atributos_con_progreso(filepath):
                 procesados += 1
                 try:
                     with db.session.no_autoflush:
-                        producto_id_csv = int(row.get('ProductoId', 0))
-                        producto = Producto.query.filter_by(id_csv=producto_id_csv).first()
+                        # Primero intentar buscar por SKU si existe en el CSV
+                        sku = row.get('SKU', '').strip()
+                        producto = None
+                        
+                        if sku:
+                            # Buscar por SKU directamente
+                            producto = Producto.query.filter_by(sku=sku).first()
+                        
+                        # Si no se encontró por SKU, buscar por ProductoId
+                        if not producto:
+                            producto_id_csv = int(row.get('ProductoId', 0))
+                            producto = Producto.query.filter_by(id_csv=producto_id_csv).first()
                         
                         if producto:
                             atributo = Atributo(
                                 producto_id=producto.id,
+                                sku=producto.sku,  # Guardar el SKU del producto
                                 atributo=row.get('Nombre', '').strip(),
                                 valor=row.get('Valor', '').strip(),
                                 orden=int(row.get('OrdenEnGrupo', 0) or 0)  # Campo OrdenEnGrupo del CSV

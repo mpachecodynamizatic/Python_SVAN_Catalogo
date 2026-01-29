@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ producto.sku }} - Detalle del Producto</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .breadcrumb-modern {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .breadcrumb-modern .breadcrumb-item a {
+            color: #fff;
+            text-decoration: none;
+        }
+        .breadcrumb-modern .breadcrumb-item.active {
+            color: #ffd700;
+        }
+        .breadcrumb-modern .breadcrumb-item + .breadcrumb-item::before {
+            content: "\f105";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: #ffd700;
+        }
+        .product-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .product-image-placeholder {
+            width: 100%;
+            height: 400px;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+        }
+        .info-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #495057;
+            margin-bottom: 5px;
+        }
+        .info-value {
+            color: #212529;
+            margin-bottom: 15px;
+        }
+        .badge-custom {
+            font-size: 0.9rem;
+            padding: 8px 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-modern">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('productos') }}">Productos</a></li>
+                <li class="breadcrumb-item active" aria-current="page">{{ producto.sku }}</li>
+            </ol>
+        </nav>
+        
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2><i class="fas fa-box"></i> {{ producto.titulo or producto.sku }}</h2>
+            <div>
+                <a href="{{ url_for('productos') }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Volver
+                </a>
+                <a href="{{ url_for('producto_atributos', id=producto.id) }}" class="btn btn-info">
+                    <i class="fas fa-list"></i> Ver Atributos ({{ atributos|length }})
+                </a>
+            </div>
+        </div>
+        
+        <div class="row">
+            <!-- Columna de imagen -->
+            <div class="col-md-5">
+                <div class="card">
+                    <div class="card-body text-center">
+                        {% if producto.imagen %}
+                            <img src="{{ producto.imagen }}" 
+                                 class="product-image" 
+                                 alt="{{ producto.sku }}"
+                                 onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'product-image-placeholder\'><div><i class=\'fas fa-image fa-5x mb-3\'></i><br>Imagen no disponible</div></div>';">
+                        {% else %}
+                            <div class="product-image-placeholder">
+                                <div>
+                                    <i class="fas fa-image fa-5x mb-3"></i><br>
+                                    Sin imagen
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                
+                <!-- Badges de estado -->
+                <div class="mt-3 text-center">
+                    <span class="badge bg-primary badge-custom me-2">
+                        <i class="fas fa-tag"></i> {{ producto.marca }}
+                    </span>
+                    {% if producto.estado_referencia %}
+                    <span class="badge bg-{{ 'success' if producto.estado_referencia == 'Activo' else 'secondary' }} badge-custom">
+                        <i class="fas fa-circle"></i> {{ producto.estado_referencia }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Columna de información -->
+            <div class="col-md-7">
+                <div class="info-card">
+                    <h5 class="mb-3"><i class="fas fa-info-circle"></i> Información General</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="info-label">SKU</div>
+                            <div class="info-value">{{ producto.sku or 'N/A' }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-label">EAN</div>
+                            <div class="info-value">{{ producto.ean or 'N/A' }}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="info-label">Marca</div>
+                            <div class="info-value">{{ producto.marca }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-label">Clasificación</div>
+                            <div class="info-value">{{ producto.clasificacion or 'N/A' }}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-label">Título</div>
+                    <div class="info-value">{{ producto.titulo or 'N/A' }}</div>
+                    
+                    <div class="info-label">Descripción</div>
+                    <div class="info-value">{{ producto.descripcion or 'N/A' }}</div>
+                    
+                    {% if producto.descripcion_larga %}
+                    <div class="info-label">Descripción Larga</div>
+                    <div class="info-value">{{ producto.descripcion_larga }}</div>
+                    {% endif %}
+                </div>
+                
+                <div class="info-card">
+                    <h5 class="mb-3"><i class="fas fa-ruler"></i> Especificaciones</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="info-label">Dimensiones</div>
+                            <div class="info-value">{{ producto.dimensiones or 'N/A' }}</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="info-label">Color</div>
+                            <div class="info-value">{{ producto.color or 'N/A' }}</div>
+                        </div>
+                    </div>
+                    
+                    <div class="info-label">ID CSV</div>
+                    <div class="info-value">{{ producto.id_csv }}</div>
+                    
+                    {% if producto.producto_id %}
+                    <div class="info-label">Producto ID</div>
+                    <div class="info-value">{{ producto.producto_id }}</div>
+                    {% endif %}
+                </div>
+                
+                <!-- Atributos principales -->
+                {% if atributos %}
+                <div class="info-card">
+                    <h5 class="mb-3"><i class="fas fa-tags"></i> Atributos Principales</h5>
+                    <div class="row">
+                        {% for atributo in atributos[:6] %}
+                        <div class="col-md-6 mb-2">
+                            <small class="text-muted">{{ atributo.atributo }}</small>
+                            <div><strong>{{ atributo.valor or 'N/A' }}</strong></div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if atributos|length > 6 %}
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('producto_atributos', id=producto.id) }}" class="btn btn-sm btn-outline-primary">
+                            Ver todos los atributos ({{ atributos|length }}) <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
