@@ -20,23 +20,51 @@ app = Flask(__name__)
 instance_path = os.environ.get('RENDER_INSTANCE_PATH', 
                                 os.path.join(os.path.dirname(os.path.abspath(__file__)), 'instance'))
 
-# Solo crear la carpeta si no existe (en Render, ya estará montada)
-if not os.path.exists(instance_path):
-    os.makedirs(instance_path, exist_ok=True)
-    print(f"📁 Carpeta instance creada en: {instance_path}")
+print(f"========================================")
+print(f"DIAGNÓSTICO DE DISCO PERSISTENTE")
+print(f"========================================")
+print(f"📂 Instance path: {instance_path}")
+print(f"🔧 RENDER_INSTANCE_PATH: {os.environ.get('RENDER_INSTANCE_PATH', 'NO CONFIGURADO')}")
+
+# Listar contenido de la carpeta instance si existe
+if os.path.exists(instance_path):
+    print(f"✅ La carpeta existe")
+    try:
+        contenido = os.listdir(instance_path)
+        print(f"📁 Contenido de la carpeta ({len(contenido)} archivos):")
+        for item in contenido:
+            item_path = os.path.join(instance_path, item)
+            if os.path.isfile(item_path):
+                size = os.path.getsize(item_path)
+                print(f"   - {item} ({size:,} bytes)")
+            else:
+                print(f"   - {item}/ (directorio)")
+        if not contenido:
+            print(f"   ⚠️  La carpeta está VACÍA")
+    except Exception as e:
+        print(f"❌ Error listando contenido: {e}")
+    
+    # Verificar permisos
+    if os.access(instance_path, os.W_OK):
+        print(f"✅ Permisos de escritura: OK")
+    else:
+        print(f"❌ Sin permisos de escritura")
 else:
-    print(f"✅ Carpeta instance encontrada en: {instance_path}")
+    os.makedirs(instance_path, exist_ok=True)
+    print(f"📁 Carpeta creada en: {instance_path}")
 
 db_path = os.environ.get('DATABASE_URL')
 if not db_path:
     db_file_path = os.path.join(instance_path, 'catalogos_nuevo.db')
     db_path = f"sqlite:///{db_file_path}"
-    print(f"🗄️  Ruta de base de datos: {db_file_path}")
+    print(f"🗄️  Ruta de BD: {db_file_path}")
     if os.path.exists(db_file_path):
         size = os.path.getsize(db_file_path)
-        print(f"✅ Base de datos existente encontrada. Tamaño: {size:,} bytes")
+        print(f"✅ BD EXISTENTE encontrada. Tamaño: {size:,} bytes")
+        print(f"   ✅ LOS DATOS SE PRESERVARÁN")
     else:
-        print(f"⚠️  Base de datos no existe aún. Se creará en: {db_file_path}")
+        print(f"⚠️  BD no existe. Se creará nueva.")
+print(f"========================================\n")
 
 app.config['SQLALCHEMY_DATABASE_URI'] = db_path
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -1353,6 +1381,26 @@ def delete_tarjeta(id):
 def init_database():
     """Inicializa la base de datos creando solo las tablas que no existen"""
     try:
+        # Crear archivo de prueba para verificar persistencia del disco
+        test_file = os.path.join(instance_path, 'DISK_PERSISTENCE_TEST.txt')
+        
+        if os.path.exists(test_file):
+            # Leer contador existente
+            with open(test_file, 'r') as f:
+                content = f.read()
+                try:
+                    count = int(content.split(':')[-1].strip())
+                    count += 1
+                except:
+                    count = 1
+            print(f"🔄 DISCO PERSISTENTE VERIFICADO - Deploy #{count}")
+            with open(test_file, 'w') as f:
+                f.write(f"Deploy counter: {count}")
+        else:
+            print(f"🆕 PRIMER DEPLOY - Creando archivo de prueba")
+            with open(test_file, 'w') as f:
+                f.write("Deploy counter: 1")
+        
         with app.app_context():
             # db.create_all() es SEGURO - solo crea tablas que no existen
             # NO elimina ni modifica datos existentes
@@ -1362,10 +1410,25 @@ def init_database():
             if os.path.exists(db_file_path):
                 size = os.path.getsize(db_file_path)
                 print(f"✅ Base de datos inicializada. Tamaño: {size:,} bytes")
+                
+                # Contar registros para verificar que hay datos
+                from sqlalchemy import inspect, text
+                inspector = inspect(db.engine)
+                tables = inspector.get_table_names()
+                print(f"📊 Tablas en BD: {', '.join(tables)}")
+                
+                # Contar catálogos como ejemplo
+                try:
+                    result = db.session.execute(text("SELECT COUNT(*) FROM catalogo")).scalar()
+                    print(f"📚 Total catálogos: {result}")
+                except:
+                    print(f"ℹ️  No se pudieron contar catálogos (tabla vacía o no existe)")
             else:
                 print("✅ Base de datos creada")
     except Exception as e:
         print(f"⚠️  Error inicializando base de datos: {e}")
+        import traceback
+        traceback.print_exc()
         print("La base de datos se inicializará en la primera petición")
 
 # Ejecutar inicialización solo una vez al arrancar
