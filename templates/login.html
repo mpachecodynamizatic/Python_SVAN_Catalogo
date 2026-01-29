@@ -66,6 +66,42 @@
             color: #6c757d;
             font-size: 0.9rem;
         }
+        .credentials-box {
+            background-color: #e7f3ff;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+        }
+        .credentials-box h6 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .credential-item {
+            background: white;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            border-radius: 5px;
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .credential-item:last-child {
+            margin-bottom: 0;
+        }
+        .credential-label {
+            color: #6c757d;
+            font-weight: 500;
+        }
+        .credential-value {
+            color: #495057;
+            font-family: monospace;
+            background: #f8f9fa;
+            padding: 3px 8px;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -88,6 +124,19 @@
                     {% endfor %}
                 {% endif %}
             {% endwith %}
+            
+            <!-- Credenciales de acceso -->
+            <div class="credentials-box">
+                <h6><i class="fas fa-info-circle"></i> Credenciales de acceso</h6>
+                <div class="credential-item">
+                    <span class="credential-label"><i class="fas fa-user-tie"></i> Productos:</span>
+                    <span class="credential-value">producto / producto123</span>
+                </div>
+                <div class="credential-item">
+                    <span class="credential-label"><i class="fas fa-user"></i> Usuario:</span>
+                    <span class="credential-value">user / user123</span>
+                </div>
+            </div>
             
             <form method="POST" action="{{ url_for('login') }}">
                 <div class="mb-3">

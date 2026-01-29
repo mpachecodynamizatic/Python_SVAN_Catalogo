@@ -37,7 +37,7 @@
             </ol>
         </nav>
         <a href="{{ url_for('index') }}" class="btn btn-secondary mb-3">Volver</a>
-        {% if session.usuario == 'admin' %}
+        {% if session.usuario in ['admin', 'producto'] %}
         <button class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Categoría</button>
         {% endif %}
         <table class="table table-striped">
@@ -55,12 +55,12 @@
                     <td>{{ categoria.descripcion }}</td>
                     <td>
                         <a href="{{ url_for('ver_categoria_completa', categoria_id=categoria.id) }}" class="btn btn-info btn-sm">Ver</a>
-                        {% if session.usuario == 'admin' %}
-                        <a href="{{ url_for('categoria', categoria_id=categoria.id) }}" class="btn btn-warning btn-sm">Configurar</a>
-                        {% else %}
+                        {% if session.usuario == 'user' %}
                         <a href="{{ url_for('categoria', categoria_id=categoria.id) }}" class="btn btn-warning btn-sm">Detalle</a>
+                        {% else %}
+                        <a href="{{ url_for('categoria', categoria_id=categoria.id) }}" class="btn btn-warning btn-sm">Configurar</a>
                         {% endif %}
-                        {% if session.usuario == 'admin' %}
+                        {% if session.usuario in ['admin', 'producto'] %}
                         <a href="{{ url_for('delete_categoria', id=categoria.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
                         {% endif %}
                     </td>

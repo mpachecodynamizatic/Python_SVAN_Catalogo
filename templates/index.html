@@ -37,7 +37,7 @@
         </nav>
         <div class="d-flex justify-content-between align-items-center mb-3">
             <div>
-                {% if session.usuario == 'admin' %}
+                {% if session.usuario in ['admin', 'producto'] %}
                 <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addModal">Añadir Catálogo</button>
                 <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#copyModal">Copiar Catálogo</button>
                 {% endif %}
@@ -83,12 +83,12 @@
                     <td>{{ catalogo.marcas }}</td>
                     <td>
                         <a href="{{ url_for('ver_catalogo_completo', catalogo_id=catalogo.id) }}" class="btn btn-info btn-sm">Ver</a>
-                        {% if session.usuario == 'admin' %}
-                        <a href="{{ url_for('configurar_catalogo', catalogo_id=catalogo.id) }}" class="btn btn-warning btn-sm">Configurar</a>
-                        {% else %}
+                        {% if session.usuario == 'user' %}
                         <a href="{{ url_for('configurar_catalogo', catalogo_id=catalogo.id) }}" class="btn btn-warning btn-sm">Detalle</a>
+                        {% else %}
+                        <a href="{{ url_for('configurar_catalogo', catalogo_id=catalogo.id) }}" class="btn btn-warning btn-sm">Configurar</a>
                         {% endif %}
-                        {% if session.usuario == 'admin' %}
+                        {% if session.usuario in ['admin', 'producto'] %}
                         <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#editCatalogoModal{{ catalogo.id }}" data-catalogo-id="{{ catalogo.id }}" data-codigo="{{ catalogo.codigo }}" data-descripcion="{{ catalogo.descripcion }}" data-marcas="{{ catalogo.marcas }}">Editar</button>
                         <a href="{{ url_for('delete_catalogo', id=catalogo.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
                         {% endif %}

@@ -74,7 +74,8 @@ app.secret_key = os.environ.get('SECRET_KEY', 'clave_secreta_muy_segura_cambiar_
 # Usuarios del sistema (en producción usar base de datos con contraseñas hasheadas)
 USUARIOS = {
     'admin': generate_password_hash('admin123'),
-    'user': generate_password_hash('user123')
+    'user': generate_password_hash('user123'),
+    'producto': generate_password_hash('producto123')
 }
 
 # Ensure upload folder exists
