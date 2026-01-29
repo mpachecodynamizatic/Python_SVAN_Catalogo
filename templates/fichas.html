@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-    <div class="container mt-5">
+    <div class="container-fluid mt-5" style="width: 90%; margin: 0 auto;">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb breadcrumb-modern">
                 <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
@@ -52,35 +52,112 @@
         </div>
         
         <div class="row mb-3 fw-bold">
-            <div class="col-1">Fila</div>
             {% for marca in marcas %}
             <div class="col">{{ marca }}</div>
             {% endfor %}
-            <div class="col-1">Total</div>
+            <div class="col-2">Totales Fila</div>
             <div class="col-1">Acciones</div>
         </div>
         {% for ficha in fichas %}
         <div class="row mb-4">
-            <div class="col-1 d-flex align-items-center">
-                <strong>Fila {{ ficha.fila_numero }}</strong>
-            </div>
             {% for marca in marcas %}
             <div class="col">
                 {% set tarjeta = ficha.tarjetas | selectattr('marca', 'equalto', marca) | list | first %}
-                {% if tarjeta %}
-                <div class="card h-100">
-                    {% if tarjeta.imagen %}
-                    <img src="{{ tarjeta.imagen }}" class="card-img-top" alt="Imagen" style="max-height: 150px; object-fit: cover;">
-                    {% else %}
-                    <div class="card-img-top bg-light d-flex align-items-center justify-content-center" style="height: 150px;">
-                        <i class="fas fa-image fa-3x text-muted"></i>
+                {% if tarjeta and tarjeta.producto %}
+                {% set producto = tarjeta.producto %}
+                {% set datos_manuales = datos_manuales_dict.get(producto.sku, [{}])[0] if datos_manuales_dict.get(producto.sku) else None %}
+                {% set atributos = producto.atributos | selectattr('valor') | list %}
+                
+                <div class="card h-100" style="font-size: 0.75rem;">
+                    <!-- Fila superior: 2 bloques -->
+                    <div class="row g-0">
+                        <!-- Bloque superior izquierda: Imagen -->
+                        <div class="col-6" style="border-right: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6;">
+                            {% if producto.imagen %}
+                            <img src="{{ producto.imagen }}" class="img-fluid" alt="Imagen" style="max-height: 120px; object-fit: contain; width: 100%; padding: 5px;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'d-flex align-items-center justify-content-center\' style=\'height: 120px;\'><i class=\'fas fa-image fa-2x text-muted\'></i></div>';">
+                            {% else %}
+                            <div class="d-flex align-items-center justify-content-center" style="height: 120px; background-color: #f8f9fa;">
+                                <i class="fas fa-image fa-2x text-muted"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Bloque superior derecha: Datos Manuales -->
+                        <div class="col-6 p-2" style="border-bottom: 1px solid #dee2e6;">
+                            <strong style="font-size: 0.7rem;">DATOS COMERCIALES</strong>
+                            <table class="table table-sm mb-0" style="font-size: 0.65rem;">
+                                <tbody>
+                                    {% if datos_manuales %}
+                                    <tr><td class="p-0"><strong>PVP:</strong></td><td class="p-0 text-end">{{ "%.2f"|format(datos_manuales.pvp) }}€</td></tr>
+                                    <tr><td class="p-0"><strong>Vendidas:</strong></td><td class="p-0 text-end">{{ datos_manuales.unidades_vendidas }}</td></tr>
+                                    <tr><td class="p-0"><strong>Stock:</strong></td><td class="p-0 text-end">{{ datos_manuales.inventario }}</td></tr>
+                                    <tr><td class="p-0"><strong>F.Entrada:</strong></td><td class="p-0 text-end">{{ datos_manuales.fecha_entrada }}</td></tr>
+                                    <tr><td class="p-0"><strong>Uds.Ent:</strong></td><td class="p-0 text-end">{{ datos_manuales.unidades_entrada }}</td></tr>
+                                    {% else %}
+                                    <tr><td colspan="2" class="text-center text-muted p-1">Sin datos</td></tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    {% endif %}
-                    <div class="card-body p-2">
-                        <h6 class="card-title text-truncate" title="{{ tarjeta.nombre or 'N/A' }}">{{ tarjeta.nombre or 'N/A' }}</h6>
-                        <small class="text-muted d-block">{{ tarjeta.peso or 'N/A' }}</small>
-                        <div class="mt-2">
-                            <a href="{{ url_for('delete_tarjeta', id=tarjeta.id) }}" class="btn btn-danger btn-sm w-100" onclick="return confirm('¿Eliminar este producto?')">
+                    
+                    <!-- Fila inferior: 2 bloques -->
+                    <div class="row g-0">
+                        <!-- Bloque inferior izquierda: Datos Producto -->
+                        <div class="col-6 p-2" style="border-right: 1px solid #dee2e6;">
+                            <strong style="font-size: 0.7rem;">PRODUCTO</strong>
+                            <div style="font-size: 0.65rem;">
+                                <div><strong>SKU:</strong> {{ producto.sku }}</div>
+                                <div class="text-truncate" title="{{ producto.titulo }}"><strong>Título:</strong> {{ producto.titulo[:30] }}...</div>
+                                <div><strong>Marca:</strong> <span class="badge bg-primary" style="font-size: 0.6rem;">{{ producto.marca }}</span></div>
+                                <div><strong>EAN:</strong> {{ producto.ean or 'N/A' }}</div>
+                                <div><strong>Estado:</strong> {{ producto.estado_referencia or 'N/A' }}</div>
+                                <div><strong>Color:</strong> {{ producto.color or 'N/A' }}</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Bloque inferior derecha: Atributos -->
+                        <div class="col-6 p-2">
+                            <strong style="font-size: 0.7rem;">ATRIBUTOS ({{ atributos|length }})</strong>
+                            <div style="font-size: 0.65rem; max-height: 100px; overflow-y: auto;">
+                                {% if atributos %}
+                                <table class="table table-sm mb-0" style="font-size: 0.6rem;">
+                                    <tbody>
+                                    {% for attr in atributos[:5] %}
+                                    <tr>
+                                        <td class="p-0" style="width: 50%;"><strong>{{ attr.atributo }}:</strong></td>
+                                        <td class="p-0">{{ attr.valor[:20] }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if atributos|length > 5 %}
+                                    <tr><td colspan="2" class="p-0 text-center"><small>+ {{ atributos|length - 5 }} más</small></td></tr>
+                                    {% endif %}
+                                    </tbody>
+                                </table>
+                                {% else %}
+                                <div class="text-muted text-center p-1">Sin atributos</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pie: Dimensiones y Fabricante -->
+                    <div class="card-footer p-1" style="font-size: 0.65rem; background-color: #f8f9fa;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-ruler-combined"></i> <strong>Dim:</strong> {{ producto.dimensiones or 'N/A' }}
+                            </div>
+                            <div>
+                                {% if datos_manuales and datos_manuales.fabricante %}
+                                <i class="fas fa-industry"></i> <strong>Fab:</strong> {{ datos_manuales.fabricante }}
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="mt-1">
+                            <a href="{{ url_for('ver_producto', id=producto.id) }}" class="btn btn-info btn-sm" style="font-size: 0.6rem; padding: 2px 6px;" title="Ver producto completo">
+                                <i class="fas fa-eye"></i> Ver
+                            </a>
+                            <a href="{{ url_for('delete_tarjeta', id=tarjeta.id) }}" class="btn btn-danger btn-sm" style="font-size: 0.6rem; padding: 2px 6px;" onclick="return confirm('¿Eliminar este producto?')" title="Eliminar">
                                 <i class="fas fa-trash"></i> Eliminar
                             </a>
                         </div>
@@ -97,8 +174,25 @@
                 {% endif %}
             </div>
             {% endfor %}
-            <div class="col d-flex align-items-center justify-content-center">
-                <span class="badge bg-primary">{{ ficha.tarjetas|length }}</span>
+            <div class="col-2 d-flex align-items-center justify-content-start">
+                {% set total_vendidas = namespace(value=0) %}
+                {% set total_stock = namespace(value=0) %}
+                {% set total_entrada = namespace(value=0) %}
+                {% for tarjeta in ficha.tarjetas %}
+                    {% if tarjeta.producto and tarjeta.producto.sku %}
+                        {% set dm = datos_manuales_dict.get(tarjeta.producto.sku, [{}])[0] if datos_manuales_dict.get(tarjeta.producto.sku) else None %}
+                        {% if dm %}
+                            {% set total_vendidas.value = total_vendidas.value + (dm.unidades_vendidas or 0) %}
+                            {% set total_stock.value = total_stock.value + (dm.inventario or 0) %}
+                            {% set total_entrada.value = total_entrada.value + (dm.unidades_entrada or 0) %}
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+                <div style="font-size: 0.9rem;">
+                    <div><i class="fas fa-shopping-cart"></i> <strong>Vendidas:</strong> <span class="badge bg-info">{{ total_vendidas.value }}</span></div>
+                    <div><i class="fas fa-box"></i> <strong>Stock:</strong> <span class="badge bg-success">{{ total_stock.value }}</span></div>
+                    <div><i class="fas fa-truck"></i> <strong>Entrada:</strong> <span class="badge bg-warning">{{ total_entrada.value }}</span></div>
+                </div>
             </div>
             <div class="col-1 d-flex align-items-center">
                 <a href="{{ url_for('delete_fila', id=ficha.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar toda la fila?')">

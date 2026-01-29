@@ -1,10 +1,18 @@
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, send_file, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 import os
 import requests
 import json
 import csv
 from werkzeug.utils import secure_filename
+from io import BytesIO
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image as RLImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
+from PIL import Image as PILImage
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///catalogos_nuevo.db'
@@ -75,6 +83,7 @@ class Ficha(db.Model):
 class Tarjeta(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     ficha_id = db.Column(db.Integer, db.ForeignKey('ficha.id'), nullable=False)
+    producto_id = db.Column(db.Integer, db.ForeignKey('producto.id'))  # Relación con producto
     marca = db.Column(db.String(10), nullable=False)
     imagen = db.Column(db.String(200))
     nombre = db.Column(db.String(200))
@@ -82,6 +91,7 @@ class Tarjeta(db.Model):
     peso = db.Column(db.String(50))
     volumen = db.Column(db.String(50))
     ficha = db.relationship('Ficha', backref=db.backref('tarjetas', lazy=True))
+    producto = db.relationship('Producto', backref=db.backref('tarjetas', lazy=True))
 
     def __repr__(self):
         return f'<Tarjeta {self.marca}>'
@@ -119,6 +129,19 @@ class Imagen(db.Model):
     producto_id = db.Column(db.Integer, db.ForeignKey('producto.id'), nullable=False)
     url = db.Column(db.String(500), nullable=False)
     producto = db.relationship('Producto', backref=db.backref('imagenes', lazy=True))
+
+class DatosManuales(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    sku = db.Column(db.String(50), unique=True, nullable=False)
+    unidades_vendidas = db.Column(db.Integer, default=0)
+    pvp = db.Column(db.Float, default=0.0)
+    inventario = db.Column(db.Integer, default=0)
+    fecha_entrada = db.Column(db.String(20))  # Formato: DD/MM/YYYY
+    unidades_entrada = db.Column(db.Integer, default=0)
+    fabricante = db.Column(db.String(100))
+    
+    def __repr__(self):
+        return f'<DatosManuales {self.sku}>'
 
 # Crear la base de datos si no existe
 with app.app_context():
@@ -207,6 +230,38 @@ def productos_atributos():
                          buscar=buscar, 
                          pagination=pagination,
                          total_atributos=total_atributos)
+
+@app.route('/datos_manuales')
+def datos_manuales():
+    buscar = request.args.get('buscar', '').strip()
+    page = request.args.get('page', 1, type=int)
+    per_page = 50  # Registros por página
+    
+    query = DatosManuales.query
+    
+    if buscar:
+        # Buscar por SKU o fabricante
+        query = query.filter(
+            db.or_(
+                DatosManuales.sku.like(f'%{buscar}%'),
+                DatosManuales.fabricante.like(f'%{buscar}%')
+            )
+        )
+    
+    # Ordenar por SKU
+    query = query.order_by(DatosManuales.sku)
+    
+    # Aplicar paginación
+    pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+    
+    # Contar total
+    total_datos = DatosManuales.query.count()
+    
+    return render_template('datos_manuales.html', 
+                         datos=pagination.items, 
+                         buscar=buscar, 
+                         pagination=pagination,
+                         total_datos=total_datos)
 
 @app.route('/ver_producto/<int:id>')
 def ver_producto(id):
@@ -577,10 +632,59 @@ def delete_catalogo(id):
     db.session.commit()
     return redirect(url_for('index'))
 
+@app.route('/ver_catalogo_completo/<int:catalogo_id>')
+def ver_catalogo_completo(catalogo_id):
+    catalogo = Catalogo.query.get_or_404(catalogo_id)
+    categorias = Categoria.query.filter_by(catalogo_id=catalogo_id).order_by(Categoria.cod_categoria).all()
+    marcas = catalogo.marcas.split(',')
+    
+    # Cargar datos manuales para todos los SKUs en un diccionario
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    # Para cada categoría, cargar sus subcategorías y fichas
+    categorias_data = []
+    for cat in categorias:
+        subcategorias = Subcategoria.query.filter_by(categoria_id=cat.id).order_by(Subcategoria.cod_categoria).all()
+        
+        subcategorias_data = []
+        for subcat in subcategorias:
+            fichas = Ficha.query.filter_by(subcategoria_id=subcat.id).order_by(Ficha.fila_numero).all()
+            
+            # Calcular totales por marca para esta subcategoría
+            totales_marca = {}
+            total_general = 0
+            for marca in marcas:
+                count = sum(1 for f in fichas for t in f.tarjetas if t.marca == marca)
+                totales_marca[marca] = count
+                total_general += count
+            
+            subcategorias_data.append({
+                'subcategoria': subcat,
+                'fichas': fichas,
+                'totales_marca': totales_marca,
+                'total_general': total_general
+            })
+        
+        categorias_data.append({
+            'categoria': cat,
+            'subcategorias_data': subcategorias_data
+        })
+    
+    return render_template('ver_catalogo_completo.html',
+                         catalogo=catalogo,
+                         categorias_data=categorias_data,
+                         marcas=marcas,
+                         datos_manuales_dict=datos_manuales_dict)
+
 @app.route('/configurar/<int:catalogo_id>')
 def configurar_catalogo(catalogo_id):
     catalogo = Catalogo.query.get_or_404(catalogo_id)
-    categorias = Categoria.query.filter_by(catalogo_id=catalogo_id).all()
+    categorias = Categoria.query.filter_by(catalogo_id=catalogo_id).order_by(Categoria.cod_categoria).all()
     return render_template('configurar.html', catalogo=catalogo, categorias=categorias)
 
 @app.route('/add_categoria/<int:catalogo_id>', methods=['POST'])
@@ -610,7 +714,7 @@ def delete_categoria(id):
 @app.route('/categoria/<int:categoria_id>')
 def categoria(categoria_id):
     categoria = Categoria.query.get_or_404(categoria_id)
-    subcategorias = Subcategoria.query.filter_by(categoria_id=categoria_id).all()
+    subcategorias = Subcategoria.query.filter_by(categoria_id=categoria_id).order_by(Subcategoria.cod_categoria).all()
     subcats_options = SUBCATEGORIAS.get(categoria.cod_categoria, [])
     return render_template('categoria.html', categoria=categoria, subcategorias=subcategorias, subcats_options=subcats_options)
 
@@ -667,7 +771,91 @@ def fichas(subcategoria_id):
         totales_marca[marca] = count
         total_general += count
     
-    return render_template('fichas.html', subcategoria=subcategoria, fichas=fichas, marcas=marcas, totales_marca=totales_marca, total_general=total_general)
+    # Cargar datos manuales para todos los SKUs en un diccionario
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    return render_template('fichas.html', 
+                         subcategoria=subcategoria, 
+                         fichas=fichas, 
+                         marcas=marcas, 
+                         totales_marca=totales_marca, 
+                         total_general=total_general,
+                         datos_manuales_dict=datos_manuales_dict)
+
+@app.route('/ver_categoria_completa/<int:categoria_id>')
+def ver_categoria_completa(categoria_id):
+    categoria = Categoria.query.get_or_404(categoria_id)
+    subcategorias = Subcategoria.query.filter_by(categoria_id=categoria_id).order_by(Subcategoria.cod_categoria).all()
+    marcas = categoria.catalogo.marcas.split(',')
+    
+    # Cargar datos manuales para todos los SKUs en un diccionario
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    # Para cada subcategoría, cargar sus fichas
+    subcategorias_data = []
+    for subcat in subcategorias:
+        fichas = Ficha.query.filter_by(subcategoria_id=subcat.id).order_by(Ficha.fila_numero).all()
+        
+        # Calcular totales por marca para esta subcategoría
+        totales_marca = {}
+        total_general = 0
+        for marca in marcas:
+            count = sum(1 for f in fichas for t in f.tarjetas if t.marca == marca)
+            totales_marca[marca] = count
+            total_general += count
+        
+        subcategorias_data.append({
+            'subcategoria': subcat,
+            'fichas': fichas,
+            'totales_marca': totales_marca,
+            'total_general': total_general
+        })
+    
+    return render_template('ver_categoria_completa.html',
+                         categoria=categoria,
+                         subcategorias_data=subcategorias_data,
+                         marcas=marcas,
+                         datos_manuales_dict=datos_manuales_dict)
+
+@app.route('/ver_fichas/<int:subcategoria_id>')
+def ver_fichas(subcategoria_id):
+    subcategoria = Subcategoria.query.get_or_404(subcategoria_id)
+    fichas = Ficha.query.filter_by(subcategoria_id=subcategoria_id).order_by(Ficha.fila_numero).all()
+    marcas = subcategoria.categoria.catalogo.marcas.split(',')
+    
+    # Calcular totales por marca
+    totales_marca = {}
+    total_general = 0
+    for marca in marcas:
+        count = sum(1 for f in fichas for t in f.tarjetas if t.marca == marca)
+        totales_marca[marca] = count
+        total_general += count
+    
+    # Cargar datos manuales para todos los SKUs en un diccionario
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    return render_template('ver_fichas.html', 
+                         subcategoria=subcategoria, 
+                         fichas=fichas, 
+                         marcas=marcas, 
+                         totales_marca=totales_marca, 
+                         total_general=total_general,
+                         datos_manuales_dict=datos_manuales_dict)
 
 @app.route('/add_fila/<int:subcategoria_id>')
 def add_fila(subcategoria_id):
@@ -735,7 +923,7 @@ def add_tarjeta(ficha_id, marca):
         
         if producto:
             nombre = producto.titulo or producto.sku
-            imagen = ''
+            imagen = producto.imagen or ''  # Usar la imagen del producto
             energy = ''
             peso = producto.dimensiones or ''
             volumen = producto.color or ''
@@ -751,7 +939,16 @@ def add_tarjeta(ficha_id, marca):
         flash(f'Error al añadir producto: {str(e)}', 'error')
         return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
     
-    tarjeta = Tarjeta(ficha_id=ficha_id, marca=marca, imagen=imagen, nombre=nombre, valor_energetico=energy, peso=peso, volumen=volumen)
+    tarjeta = Tarjeta(
+        ficha_id=ficha_id, 
+        producto_id=producto.id,  # Guardar el ID del producto
+        marca=marca, 
+        imagen=imagen, 
+        nombre=nombre, 
+        valor_energetico=energy, 
+        peso=peso, 
+        volumen=volumen
+    )
     db.session.add(tarjeta)
     db.session.commit()
     flash('Producto añadido correctamente', 'success')
@@ -771,6 +968,356 @@ def delete_tarjeta(id):
     db.session.commit()
     ficha = Ficha.query.get(ficha_id)
     return redirect(url_for('fichas', subcategoria_id=ficha.subcategoria_id))
+
+def crear_tarjeta_pdf(producto, dm, ancho_col):
+    """Crea una tabla con el diseño de 4 bloques de la tarjeta"""
+    styles = getSampleStyleSheet()
+    
+    # Descargar imagen si existe
+    img_element = None
+    if producto.imagen:
+        try:
+            response = requests.get(producto.imagen, timeout=5)
+            if response.status_code == 200:
+                img_buffer = BytesIO(response.content)
+                img = PILImage.open(img_buffer)
+                # Redimensionar imagen manteniendo aspecto
+                img.thumbnail((120, 120), PILImage.Resampling.LANCZOS)
+                img_buffer2 = BytesIO()
+                img.save(img_buffer2, format='PNG')
+                img_buffer2.seek(0)
+                img_element = RLImage(img_buffer2, width=2.5*cm, height=2.5*cm)
+        except:
+            pass
+    
+    if not img_element:
+        img_element = Paragraph("<para align='center'><font color='gray' size='8'>[Sin imagen]</font></para>", styles['Normal'])
+    
+    # Datos comerciales - COMPLETOS con todos los campos
+    datos_comerciales = []
+    if dm:
+        datos_comerciales = [
+            [Paragraph(f"<font size='5'><b>PVP:</b></font>", styles['Normal']), 
+             Paragraph(f"<font size='5'>{dm.pvp:.2f}€</font>", styles['Normal'])],
+            [Paragraph(f"<font size='5'><b>Vendidas:</b></font>", styles['Normal']), 
+             Paragraph(f"<font size='5'>{dm.unidades_vendidas}</font>", styles['Normal'])],
+            [Paragraph(f"<font size='5'><b>Stock:</b></font>", styles['Normal']), 
+             Paragraph(f"<font size='5'>{dm.inventario}</font>", styles['Normal'])],
+            [Paragraph(f"<font size='5'><b>F.Entrada:</b></font>", styles['Normal']), 
+             Paragraph(f"<font size='5'>{dm.fecha_entrada}</font>", styles['Normal'])],
+            [Paragraph(f"<font size='5'><b>Uds.Ent:</b></font>", styles['Normal']), 
+             Paragraph(f"<font size='5'>{dm.unidades_entrada}</font>", styles['Normal'])],
+        ]
+    else:
+        datos_comerciales = [[Paragraph("<font size='6'>Sin datos</font>", styles['Normal'])]]
+    
+    tabla_comercial = Table(datos_comerciales, colWidths=[ancho_col/2*0.45, ancho_col/2*0.55])
+    tabla_comercial.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 5),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+    ]))
+    
+    # Datos producto - COMPLETOS con todos los campos
+    titulo_corto = (producto.titulo[:30] + '...') if producto.titulo and len(producto.titulo) > 30 else (producto.titulo or 'N/A')
+    datos_producto = [
+        [Paragraph(f"<font size='5'><b>SKU:</b> {producto.sku}</font>", styles['Normal'])],
+        [Paragraph(f"<font size='5'><b>Título:</b> {titulo_corto}</font>", styles['Normal'])],
+        [Paragraph(f"<font size='5'><b>Marca:</b> {producto.marca}</font>", styles['Normal'])],
+        [Paragraph(f"<font size='5'><b>EAN:</b> {producto.ean or 'N/A'}</font>", styles['Normal'])],
+        [Paragraph(f"<font size='5'><b>Estado:</b> {producto.estado_referencia or 'N/A'}</font>", styles['Normal'])],
+        [Paragraph(f"<font size='5'><b>Color:</b> {producto.color or 'N/A'}</font>", styles['Normal'])],
+    ]
+    
+    tabla_producto = Table(datos_producto, colWidths=[ancho_col/2])
+    tabla_producto.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 5),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    
+    # Atributos - hasta 5 como en pantalla
+    atributos_list = [attr for attr in producto.atributos if attr.valor][:5]
+    if atributos_list:
+        datos_atributos = [[Paragraph(f"<font size='5'><b>{attr.atributo[:20]}:</b> {attr.valor[:20]}</font>", 
+                                     styles['Normal'])] for attr in atributos_list]
+        if len([attr for attr in producto.atributos if attr.valor]) > 5:
+            mas = len([attr for attr in producto.atributos if attr.valor]) - 5
+            datos_atributos.append([Paragraph(f"<font size='5'><i>+ {mas} más</i></font>", styles['Normal'])])
+    else:
+        datos_atributos = [[Paragraph("<font size='5'>Sin atributos</font>", styles['Normal'])]]
+    
+    tabla_atributos = Table(datos_atributos, colWidths=[ancho_col/2])
+    tabla_atributos.setStyle(TableStyle([
+        ('FONTSIZE', (0, 0), (-1, -1), 5),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    
+    # Crear diseño de 4 bloques (2x2)
+    tarjeta_data = [
+        [img_element, tabla_comercial],
+        [tabla_producto, tabla_atributos]
+    ]
+    
+    tarjeta_table = Table(tarjeta_data, colWidths=[ancho_col/2, ancho_col/2], rowHeights=[3*cm, 3*cm])
+    tarjeta_table.setStyle(TableStyle([
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('ALIGN', (0, 0), (0, 0), 'CENTER'),  # Imagen centrada
+        ('BACKGROUND', (0, 0), (-1, -1), colors.white),
+    ]))
+    
+    # Footer con Dimensiones y Fabricante
+    footer_text = f"Dim: {producto.dimensiones or 'N/A'}"
+    if dm and dm.fabricante:
+        footer_text += f"  |  Fab: {dm.fabricante}"
+    
+    footer_data = [[Paragraph(f"<font size='5'>{footer_text}</font>", styles['Normal'])]]
+    footer_table = Table(footer_data, colWidths=[ancho_col])
+    footer_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
+        ('FONTSIZE', (0, 0), (-1, -1), 5),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    
+    # Combinar tarjeta con footer
+    tarjeta_completa = Table([[tarjeta_table], [footer_table]], colWidths=[ancho_col])
+    tarjeta_completa.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+    ]))
+    
+    return tarjeta_completa
+
+@app.route('/generar_pdf_fichas/<int:subcategoria_id>')
+def generar_pdf_fichas(subcategoria_id):
+    subcategoria = Subcategoria.query.get_or_404(subcategoria_id)
+    fichas = Ficha.query.filter_by(subcategoria_id=subcategoria_id).order_by(Ficha.fila_numero).all()
+    marcas = subcategoria.categoria.catalogo.marcas.split(',')
+    
+    # Cargar datos manuales
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    # Crear PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=0.5*cm, rightMargin=0.5*cm, topMargin=0.8*cm, bottomMargin=0.8*cm)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Título
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor('#667eea'), alignment=TA_CENTER)
+    elements.append(Paragraph(f"{subcategoria.categoria.catalogo.codigo} - {subcategoria.categoria.cod_categoria} - {subcategoria.cod_categoria}", title_style))
+    elements.append(Spacer(1, 0.3*cm))
+    
+    ancho_disponible = landscape(A4)[0] - 1*cm
+    ancho_col = ancho_disponible / len(marcas)
+    
+    # Crear tabla por cada fila
+    for ficha in fichas:
+        # Encabezado de marcas
+        header_data = [[Paragraph(f"<para align='center'><b>{marca}</b></para>", styles['Normal']) for marca in marcas]]
+        header_table = Table(header_data, colWidths=[ancho_col] * len(marcas))
+        header_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#667eea')),
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 9),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ]))
+        elements.append(header_table)
+        
+        # Fila de tarjetas
+        tarjetas_row = []
+        for marca in marcas:
+            tarjeta = next((t for t in ficha.tarjetas if t.marca == marca), None)
+            if tarjeta and tarjeta.producto:
+                producto = tarjeta.producto
+                dm = datos_manuales_dict.get(producto.sku, [{}])[0] if datos_manuales_dict.get(producto.sku) else None
+                tarjetas_row.append(crear_tarjeta_pdf(producto, dm, ancho_col))
+            else:
+                tarjetas_row.append(Paragraph("<para align='center'><font color='gray'>-</font></para>", styles['Normal']))
+        
+        productos_table = Table([tarjetas_row], colWidths=[ancho_col] * len(marcas))
+        productos_table.setStyle(TableStyle([
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ]))
+        elements.append(productos_table)
+        elements.append(Spacer(1, 0.4*cm))
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    filename = f"{subcategoria.categoria.catalogo.codigo}_{subcategoria.categoria.cod_categoria}_{subcategoria.cod_categoria}.pdf"
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
+
+@app.route('/generar_pdf_categoria/<int:categoria_id>')
+def generar_pdf_categoria(categoria_id):
+    categoria = Categoria.query.get_or_404(categoria_id)
+    subcategorias = Subcategoria.query.filter_by(categoria_id=categoria_id).order_by(Subcategoria.cod_categoria).all()
+    marcas = categoria.catalogo.marcas.split(',')
+    
+    # Cargar datos manuales
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    # Crear PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=0.5*cm, rightMargin=0.5*cm, topMargin=0.8*cm, bottomMargin=0.8*cm)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Título principal
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=16, textColor=colors.HexColor('#667eea'), alignment=TA_CENTER)
+    elements.append(Paragraph(f"{categoria.catalogo.codigo} - {categoria.cod_categoria}", title_style))
+    elements.append(Spacer(1, 0.3*cm))
+    
+    ancho_disponible = landscape(A4)[0] - 1*cm
+    ancho_col = ancho_disponible / len(marcas)
+    
+    for subcat in subcategorias:
+        # Título de subcategoría
+        subtitle_style = ParagraphStyle('SubTitle', parent=styles['Heading2'], fontSize=12, textColor=colors.HexColor('#764ba2'), alignment=TA_LEFT)
+        elements.append(Paragraph(f"{subcat.cod_categoria} - {subcat.descripcion}", subtitle_style))
+        elements.append(Spacer(1, 0.2*cm))
+        
+        fichas = Ficha.query.filter_by(subcategoria_id=subcat.id).order_by(Ficha.fila_numero).all()
+        
+        for ficha in fichas:
+            # Encabezado
+            header_data = [[Paragraph(f"<para align='center'><b>{marca}</b></para>", styles['Normal']) for marca in marcas]]
+            header_table = Table(header_data, colWidths=[ancho_col] * len(marcas))
+            header_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#667eea')),
+                ('TEXTCOLOR', (0, 0), (-1, -1), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ]))
+            elements.append(header_table)
+            
+            # Tarjetas
+            tarjetas_row = []
+            for marca in marcas:
+                tarjeta = next((t for t in ficha.tarjetas if t.marca == marca), None)
+                if tarjeta and tarjeta.producto:
+                    producto = tarjeta.producto
+                    dm = datos_manuales_dict.get(producto.sku, [{}])[0] if datos_manuales_dict.get(producto.sku) else None
+                    tarjetas_row.append(crear_tarjeta_pdf(producto, dm, ancho_col))
+                else:
+                    tarjetas_row.append(Paragraph("<para align='center'><font color='gray'>-</font></para>", styles['Normal']))
+            
+            productos_table = Table([tarjetas_row], colWidths=[ancho_col] * len(marcas))
+            productos_table.setStyle(TableStyle([
+                ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+            ]))
+            elements.append(productos_table)
+            elements.append(Spacer(1, 0.3*cm))
+        
+        elements.append(PageBreak())
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    filename = f"{categoria.catalogo.codigo}_{categoria.cod_categoria}.pdf"
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
+
+@app.route('/generar_pdf_catalogo/<int:catalogo_id>')
+def generar_pdf_catalogo(catalogo_id):
+    catalogo = Catalogo.query.get_or_404(catalogo_id)
+    categorias = Categoria.query.filter_by(catalogo_id=catalogo_id).order_by(Categoria.cod_categoria).all()
+    marcas = catalogo.marcas.split(',')
+    
+    # Cargar datos manuales
+    datos_manuales_dict = {}
+    datos_manuales = DatosManuales.query.all()
+    for dm in datos_manuales:
+        if dm.sku not in datos_manuales_dict:
+            datos_manuales_dict[dm.sku] = []
+        datos_manuales_dict[dm.sku].append(dm)
+    
+    # Crear PDF
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=0.5*cm, rightMargin=0.5*cm, topMargin=0.8*cm, bottomMargin=0.8*cm)
+    elements = []
+    styles = getSampleStyleSheet()
+    
+    # Título principal
+    title_style = ParagraphStyle('CustomTitle', parent=styles['Heading1'], fontSize=18, textColor=colors.HexColor('#f5576c'), alignment=TA_CENTER)
+    elements.append(Paragraph(f"CATÁLOGO: {catalogo.codigo} - {catalogo.descripcion}", title_style))
+    elements.append(Spacer(1, 0.3*cm))
+    
+    ancho_disponible = landscape(A4)[0] - 1*cm
+    ancho_col = ancho_disponible / len(marcas)
+    
+    for cat in categorias:
+        # Título de categoría
+        cat_style = ParagraphStyle('CatTitle', parent=styles['Heading1'], fontSize=14, textColor=colors.HexColor('#f5576c'), alignment=TA_LEFT)
+        elements.append(Paragraph(f"{cat.cod_categoria} - {cat.descripcion}", cat_style))
+        elements.append(Spacer(1, 0.2*cm))
+        
+        subcategorias = Subcategoria.query.filter_by(categoria_id=cat.id).order_by(Subcategoria.cod_categoria).all()
+        
+        for subcat in subcategorias:
+            # Título de subcategoría
+            subtitle_style = ParagraphStyle('SubTitle', parent=styles['Heading2'], fontSize=10, textColor=colors.HexColor('#764ba2'), alignment=TA_LEFT)
+            elements.append(Paragraph(f"{subcat.cod_categoria} - {subcat.descripcion}", subtitle_style))
+            elements.append(Spacer(1, 0.1*cm))
+            
+            fichas = Ficha.query.filter_by(subcategoria_id=subcat.id).order_by(Ficha.fila_numero).all()
+            
+            for ficha in fichas:
+                # Encabezado
+                header_data = [[Paragraph(f"<para align='center'><b>{marca}</b></para>", styles['Normal']) for marca in marcas]]
+                header_table = Table(header_data, colWidths=[ancho_col] * len(marcas))
+                header_table.setStyle(TableStyle([
+                    ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#667eea')),
+                    ('TEXTCOLOR', (0, 0), (-1, -1), colors.whitesmoke),
+                    ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                    ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+                    ('FONTSIZE', (0, 0), (-1, -1), 7),
+                ]))
+                elements.append(header_table)
+                
+                # Tarjetas
+                tarjetas_row = []
+                for marca in marcas:
+                    tarjeta = next((t for t in ficha.tarjetas if t.marca == marca), None)
+                    if tarjeta and tarjeta.producto:
+                        producto = tarjeta.producto
+                        dm = datos_manuales_dict.get(producto.sku, [{}])[0] if datos_manuales_dict.get(producto.sku) else None
+                        tarjetas_row.append(crear_tarjeta_pdf(producto, dm, ancho_col))
+                    else:
+                        tarjetas_row.append(Paragraph("<para align='center'><font color='gray'>-</font></para>", styles['Normal']))
+                
+                productos_table = Table([tarjetas_row], colWidths=[ancho_col] * len(marcas))
+                productos_table.setStyle(TableStyle([
+                    ('GRID', (0, 0), (-1, -1), 1, colors.black),
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ]))
+                elements.append(productos_table)
+                elements.append(Spacer(1, 0.2*cm))
+        
+        elements.append(PageBreak())
+    
+    doc.build(elements)
+    buffer.seek(0)
+    
+    filename = f"{catalogo.codigo}_COMPLETO.pdf"
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name=filename)
 
 if __name__ == '__main__':
     app.run(debug=True)

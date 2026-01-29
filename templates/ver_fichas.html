@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ver Fichas</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .breadcrumb-modern {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .breadcrumb-modern .breadcrumb-item a {
+            color: #fff;
+            text-decoration: none;
+        }
+        .breadcrumb-modern .breadcrumb-item.active {
+            color: #ffd700;
+        }
+        .breadcrumb-modern .breadcrumb-item + .breadcrumb-item::before {
+            content: "\f105";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: #ffd700;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-5" style="width: 90%; margin: 0 auto;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-modern">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('configurar_catalogo', catalogo_id=subcategoria.categoria.catalogo_id) }}"><i class="fas fa-folder"></i> {{ subcategoria.categoria.catalogo.codigo }} - {{ subcategoria.categoria.catalogo.descripcion }}</a></li>
+                <li class="breadcrumb-item"><a href="{{ url_for('categoria', categoria_id=subcategoria.categoria_id) }}"><i class="fas fa-tag"></i> {{ subcategoria.categoria.cod_categoria }}</a></li>
+                <li class="breadcrumb-item active" aria-current="page"><i class="fas fa-eye"></i> Ver: {{ subcategoria.cod_categoria }}</li>
+            </ol>
+        </nav>
+        <a href="{{ url_for('categoria', categoria_id=subcategoria.categoria_id) }}" class="btn btn-secondary mb-3">Volver</a>
+        <a href="{{ url_for('generar_pdf_fichas', subcategoria_id=subcategoria.id) }}" class="btn btn-danger mb-3">
+            <i class="fas fa-file-pdf"></i> Generar PDF
+        </a>
+        
+        <!-- Contador de totales -->
+        <div class="alert alert-info mb-3">
+            <i class="fas fa-info-circle"></i> Total de productos: <strong>{{ total_general }}</strong>
+            {% for marca in marcas %}
+                | {{ marca }}: <strong>{{ totales_marca[marca] }}</strong>
+            {% endfor %}
+        </div>
+        
+        <div class="row mb-3 fw-bold">
+            {% for marca in marcas %}
+            <div class="col">{{ marca }}</div>
+            {% endfor %}
+            <div class="col-2">Totales Fila</div>
+        </div>
+        {% for ficha in fichas %}
+        <div class="row mb-4">
+            {% for marca in marcas %}
+            <div class="col">
+                {% set tarjeta = ficha.tarjetas | selectattr('marca', 'equalto', marca) | list | first %}
+                {% if tarjeta and tarjeta.producto %}
+                {% set producto = tarjeta.producto %}
+                {% set datos_manuales = datos_manuales_dict.get(producto.sku, [{}])[0] if datos_manuales_dict.get(producto.sku) else None %}
+                {% set atributos = producto.atributos | selectattr('valor') | list %}
+                
+                <div class="card h-100" style="font-size: 0.75rem;">
+                    <!-- Fila superior: 2 bloques -->
+                    <div class="row g-0">
+                        <!-- Bloque superior izquierda: Imagen -->
+                        <div class="col-6" style="border-right: 1px solid #dee2e6; border-bottom: 1px solid #dee2e6;">
+                            {% if producto.imagen %}
+                            <img src="{{ producto.imagen }}" class="img-fluid" alt="Imagen" style="max-height: 120px; object-fit: contain; width: 100%; padding: 5px;" onerror="this.onerror=null; this.parentElement.innerHTML='<div class=\'d-flex align-items-center justify-content-center\' style=\'height: 120px;\'><i class=\'fas fa-image fa-2x text-muted\'></i></div>';">
+                            {% else %}
+                            <div class="d-flex align-items-center justify-content-center" style="height: 120px; background-color: #f8f9fa;">
+                                <i class="fas fa-image fa-2x text-muted"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        
+                        <!-- Bloque superior derecha: Datos Manuales -->
+                        <div class="col-6 p-2" style="border-bottom: 1px solid #dee2e6;">
+                            <strong style="font-size: 0.7rem;">DATOS COMERCIALES</strong>
+                            <table class="table table-sm mb-0" style="font-size: 0.65rem;">
+                                <tbody>
+                                    {% if datos_manuales %}
+                                    <tr><td class="p-0"><strong>PVP:</strong></td><td class="p-0 text-end">{{ "%.2f"|format(datos_manuales.pvp) }}€</td></tr>
+                                    <tr><td class="p-0"><strong>Vendidas:</strong></td><td class="p-0 text-end">{{ datos_manuales.unidades_vendidas }}</td></tr>
+                                    <tr><td class="p-0"><strong>Stock:</strong></td><td class="p-0 text-end">{{ datos_manuales.inventario }}</td></tr>
+                                    <tr><td class="p-0"><strong>F.Entrada:</strong></td><td class="p-0 text-end">{{ datos_manuales.fecha_entrada }}</td></tr>
+                                    <tr><td class="p-0"><strong>Uds.Ent:</strong></td><td class="p-0 text-end">{{ datos_manuales.unidades_entrada }}</td></tr>
+                                    {% else %}
+                                    <tr><td colspan="2" class="text-center text-muted p-1">Sin datos</td></tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Fila inferior: 2 bloques -->
+                    <div class="row g-0">
+                        <!-- Bloque inferior izquierda: Datos Producto -->
+                        <div class="col-6 p-2" style="border-right: 1px solid #dee2e6;">
+                            <strong style="font-size: 0.7rem;">PRODUCTO</strong>
+                            <div style="font-size: 0.65rem;">
+                                <div><strong>SKU:</strong> {{ producto.sku }}</div>
+                                <div class="text-truncate" title="{{ producto.titulo }}"><strong>Título:</strong> {{ producto.titulo[:30] }}...</div>
+                                <div><strong>Marca:</strong> <span class="badge bg-primary" style="font-size: 0.6rem;">{{ producto.marca }}</span></div>
+                                <div><strong>EAN:</strong> {{ producto.ean or 'N/A' }}</div>
+                                <div><strong>Estado:</strong> {{ producto.estado_referencia or 'N/A' }}</div>
+                                <div><strong>Color:</strong> {{ producto.color or 'N/A' }}</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Bloque inferior derecha: Atributos -->
+                        <div class="col-6 p-2">
+                            <strong style="font-size: 0.7rem;">ATRIBUTOS ({{ atributos|length }})</strong>
+                            <div style="font-size: 0.65rem; max-height: 100px; overflow-y: auto;">
+                                {% if atributos %}
+                                <table class="table table-sm mb-0" style="font-size: 0.6rem;">
+                                    <tbody>
+                                    {% for attr in atributos[:5] %}
+                                    <tr>
+                                        <td class="p-0" style="width: 50%;"><strong>{{ attr.atributo }}:</strong></td>
+                                        <td class="p-0">{{ attr.valor[:20] }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    {% if atributos|length > 5 %}
+                                    <tr><td colspan="2" class="p-0 text-center"><small>+ {{ atributos|length - 5 }} más</small></td></tr>
+                                    {% endif %}
+                                    </tbody>
+                                </table>
+                                {% else %}
+                                <div class="text-muted text-center p-1">Sin atributos</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pie: Dimensiones y Fabricante -->
+                    <div class="card-footer p-1" style="font-size: 0.65rem; background-color: #f8f9fa;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="fas fa-ruler-combined"></i> <strong>Dim:</strong> {{ producto.dimensiones or 'N/A' }}
+                            </div>
+                            <div>
+                                {% if datos_manuales and datos_manuales.fabricante %}
+                                <i class="fas fa-industry"></i> <strong>Fab:</strong> {{ datos_manuales.fabricante }}
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="card text-center h-100" style="background-color: #f8f9fa;">
+                    <div class="card-body d-flex align-items-center justify-content-center">
+                        <span class="text-muted"><i class="fas fa-ban"></i> Sin producto</span>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+            <div class="col-2 d-flex align-items-center justify-content-start">
+                {% set total_vendidas = namespace(value=0) %}
+                {% set total_stock = namespace(value=0) %}
+                {% set total_entrada = namespace(value=0) %}
+                {% for tarjeta in ficha.tarjetas %}
+                    {% if tarjeta.producto and tarjeta.producto.sku %}
+                        {% set dm = datos_manuales_dict.get(tarjeta.producto.sku, [{}])[0] if datos_manuales_dict.get(tarjeta.producto.sku) else None %}
+                        {% if dm %}
+                            {% set total_vendidas.value = total_vendidas.value + (dm.unidades_vendidas or 0) %}
+                            {% set total_stock.value = total_stock.value + (dm.inventario or 0) %}
+                            {% set total_entrada.value = total_entrada.value + (dm.unidades_entrada or 0) %}
+                        {% endif %}
+                    {% endif %}
+                {% endfor %}
+                <div style="font-size: 0.9rem;">
+                    <div><i class="fas fa-shopping-cart"></i> <strong>Vendidas:</strong> <span class="badge bg-info">{{ total_vendidas.value }}</span></div>
+                    <div><i class="fas fa-box"></i> <strong>Stock:</strong> <span class="badge bg-success">{{ total_stock.value }}</span></div>
+                    <div><i class="fas fa-truck"></i> <strong>Entrada:</strong> <span class="badge bg-warning">{{ total_entrada.value }}</span></div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -29,7 +29,7 @@
     </style>
 </head>
 <body>
-    <div class="container mt-5">
+    <div class="container-fluid mt-5" style="width: 90%; margin: 0 auto;">
         <nav aria-label="breadcrumb">
             <ol class="breadcrumb breadcrumb-modern">
                 <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
@@ -54,7 +54,7 @@
                     <td>{{ subcategoria.cod_categoria }}</td>
                     <td>{{ subcategoria.descripcion }}</td>
                     <td>
-                        <button class="btn btn-info btn-sm">Ver</button>
+                        <a href="{{ url_for('ver_fichas', subcategoria_id=subcategoria.id) }}" class="btn btn-info btn-sm">Ver</a>
                         <a href="{{ url_for('fichas', subcategoria_id=subcategoria.id) }}" class="btn btn-warning btn-sm">Configurar</a>
                         <a href="{{ url_for('delete_subcategoria', id=subcategoria.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
                     </td>

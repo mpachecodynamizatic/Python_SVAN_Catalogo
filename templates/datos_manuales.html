@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Datos Manuales</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .breadcrumb-modern {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .breadcrumb-modern .breadcrumb-item a {
+            color: #fff;
+            text-decoration: none;
+        }
+        .breadcrumb-modern .breadcrumb-item.active {
+            color: #ffd700;
+        }
+        .breadcrumb-modern .breadcrumb-item + .breadcrumb-item::before {
+            content: "\f105";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: #ffd700;
+        }
+        .table-sm td {
+            padding: 0.3rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-5" style="width: 90%; margin: 0 auto;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-modern">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Datos Manuales</li>
+            </ol>
+        </nav>
+        
+        <div class="row mb-3">
+            <div class="col">
+                <h2>
+                    <i class="fas fa-database"></i> Datos Manuales
+                    <span class="badge bg-primary">{{ total_datos }} total</span>
+                </h2>
+            </div>
+        </div>
+        
+        <a href="{{ url_for('index') }}" class="btn btn-secondary mb-3">
+            <i class="fas fa-arrow-left"></i> Volver
+        </a>
+        
+        <!-- Buscador -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <form method="GET" action="{{ url_for('datos_manuales') }}" class="row g-3">
+                    <div class="col-md-10">
+                        <div class="input-group">
+                            <span class="input-group-text"><i class="fas fa-search"></i></span>
+                            <input type="text" class="form-control" name="buscar" 
+                                   placeholder="Buscar por SKU o fabricante..." 
+                                   value="{{ buscar or '' }}"
+                                   autofocus>
+                        </div>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="fas fa-search"></i> Buscar
+                        </button>
+                    </div>
+                    {% if buscar %}
+                    <div class="col-12">
+                        <a href="{{ url_for('datos_manuales') }}" class="btn btn-sm btn-outline-secondary">
+                            <i class="fas fa-times"></i> Limpiar búsqueda
+                        </a>
+                        <small class="text-muted ms-2">
+                            Mostrando resultados para: <strong>{{ buscar }}</strong> ({{ pagination.total }} registro(s))
+                        </small>
+                    </div>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="mt-3">
+                    {% for message in messages %}
+                        <div class="alert alert-info">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <div class="table-responsive">
+            <table class="table table-striped table-sm table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th style="width: 10%;">SKU</th>
+                        <th style="width: 10%;">PVP</th>
+                        <th style="width: 10%;">Unid. Vendidas</th>
+                        <th style="width: 10%;">Inventario</th>
+                        <th style="width: 10%;">Fecha Entrada</th>
+                        <th style="width: 10%;">Unid. Entrada</th>
+                        <th style="width: 15%;">Fabricante</th>
+                        <th style="width: 15%;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if datos %}
+                        {% for dato in datos %}
+                        <tr>
+                            <td><strong>{{ dato.sku }}</strong></td>
+                            <td class="text-end">{{ "%.2f"|format(dato.pvp) }}€</td>
+                            <td class="text-center">
+                                <span class="badge bg-info">{{ dato.unidades_vendidas }}</span>
+                            </td>
+                            <td class="text-center">
+                                {% if dato.inventario > 50 %}
+                                <span class="badge bg-success">{{ dato.inventario }}</span>
+                                {% elif dato.inventario > 20 %}
+                                <span class="badge bg-warning">{{ dato.inventario }}</span>
+                                {% else %}
+                                <span class="badge bg-danger">{{ dato.inventario }}</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-center">{{ dato.fecha_entrada }}</td>
+                            <td class="text-center">{{ dato.unidades_entrada }}</td>
+                            <td>
+                                <span class="badge bg-secondary">{{ dato.fabricante }}</span>
+                            </td>
+                            <td>
+                                <a href="{{ url_for('productos') }}?buscar={{ dato.sku }}" class="btn btn-sm btn-info" title="Ver producto">
+                                    <i class="fas fa-eye"></i> Ver Producto
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4">
+                                <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+                                <p class="text-muted">No se encontraron datos manuales.</p>
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- Paginación -->
+        {% if pagination.pages > 1 %}
+        <nav aria-label="Paginación de datos manuales">
+            <ul class="pagination justify-content-center">
+                <!-- Primer página -->
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('datos_manuales', page=1, buscar=buscar) if pagination.has_prev else '#' }}">
+                        <i class="fas fa-angle-double-left"></i>
+                    </a>
+                </li>
+                
+                <!-- Página anterior -->
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('datos_manuales', page=pagination.prev_num, buscar=buscar) if pagination.has_prev else '#' }}">
+                        <i class="fas fa-angle-left"></i>
+                    </a>
+                </li>
+                
+                <!-- Páginas numeradas -->
+                {% for page_num in pagination.iter_pages(left_edge=2, right_edge=2, left_current=2, right_current=2) %}
+                    {% if page_num %}
+                        <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('datos_manuales', page=page_num, buscar=buscar) }}">{{ page_num }}</a>
+                        </li>
+                    {% else %}
+                        <li class="page-item disabled">
+                            <span class="page-link">...</span>
+                        </li>
+                    {% endif %}
+                {% endfor %}
+                
+                <!-- Página siguiente -->
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('datos_manuales', page=pagination.next_num, buscar=buscar) if pagination.has_next else '#' }}">
+                        <i class="fas fa-angle-right"></i>
+                    </a>
+                </li>
+                
+                <!-- Última página -->
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                    <a class="page-link" href="{{ url_for('datos_manuales', page=pagination.pages, buscar=buscar) if pagination.has_next else '#' }}">
+                        <i class="fas fa-angle-double-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <div class="text-center text-muted mb-3">
+            <small>
+                Mostrando {{ pagination.items|length }} de {{ pagination.total }} registros 
+                (Página {{ pagination.page }} de {{ pagination.pages }})
+            </small>
+        </div>
+        {% endif %}
+        
+        <!-- Estadísticas resumidas -->
+        <div class="row mt-4">
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-boxes text-primary"></i> Total Productos
+                        </h5>
+                        <h2>{{ total_datos }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-chart-line text-success"></i> En Stock
+                        </h5>
+                        <h2>{% set stock_count = datos|selectattr('inventario', 'gt', 0)|list|length %}{{ stock_count }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-exclamation-triangle text-warning"></i> Stock Bajo
+                        </h5>
+                        <h2>{% set bajo_count = datos|selectattr('inventario', 'le', 20)|list|length %}{{ bajo_count }}</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title">
+                            <i class="fas fa-ban text-danger"></i> Sin Stock
+                        </h5>
+                        <h2>{% set sin_stock = datos|selectattr('inventario', 'eq', 0)|list|length %}{{ sin_stock }}</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
