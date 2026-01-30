@@ -72,8 +72,7 @@
         {% set subcategoria = subcat_data.subcategoria %}
         {% set fichas = subcat_data.fichas %}
         {% set totales_marca = subcat_data.totales_marca %}
-        {% set total_general = subcat_data.total_general %}
-        
+        {% set total_general = subcat_data.total_general %}        {% set plantilla_config = subcat_data.plantilla_config %}        
         <!-- Separador de subcategoría -->
         <div class="subcategoria-separator">
             <i class="fas fa-image"></i> {{ subcategoria.cod_categoria }} - {{ subcategoria.descripcion }}
@@ -149,35 +148,42 @@
                         <div class="col-6 p-2" style="border-right: 1px solid #dee2e6;">
                             <strong style="font-size: 0.7rem;">PRODUCTO</strong>
                             <div style="font-size: 0.65rem;">
-                                <div><strong>SKU:</strong> {{ producto.sku }}</div>
-                                <div class="text-truncate" title="{{ producto.titulo }}"><strong>Título:</strong> {{ producto.titulo[:30] }}...</div>
-                                <div><strong>Marca:</strong> <span class="badge bg-primary" style="font-size: 0.6rem;">{{ producto.marca }}</span></div>
-                                <div><strong>EAN:</strong> {{ producto.ean or 'N/A' }}</div>
-                                <div><strong>Estado:</strong> {{ producto.estado_referencia or 'N/A' }}</div>
-                                <div><strong>Color:</strong> {{ producto.color or 'N/A' }}</div>
+                                {% if 'sku' in plantilla_config.campos_ficha %}<div><strong>SKU:</strong> {{ producto.sku }}</div>{% endif %}
+                                {% if 'titulo' in plantilla_config.campos_ficha %}<div class="text-truncate" title="{{ producto.titulo }}"><strong>Título:</strong> {{ producto.titulo[:30] }}...</div>{% endif %}
+                                {% if 'marca' in plantilla_config.campos_ficha %}<div><strong>Marca:</strong> <span class="badge bg-primary" style="font-size: 0.6rem;">{{ producto.marca }}</span></div>{% endif %}
+                                {% if 'ean' in plantilla_config.campos_ficha %}<div><strong>EAN:</strong> {{ producto.ean or 'N/A' }}</div>{% endif %}
+                                {% if 'estado_referencia' in plantilla_config.campos_ficha %}<div><strong>Estado:</strong> {{ producto.estado_referencia or 'N/A' }}</div>{% endif %}
+                                {% if 'color' in plantilla_config.campos_ficha %}<div><strong>Color:</strong> {{ producto.color or 'N/A' }}</div>{% endif %}
                             </div>
                         </div>
                         
                         <!-- Bloque inferior derecha: Atributos -->
                         <div class="col-6 p-2">
-                            <strong style="font-size: 0.7rem;">ATRIBUTOS ({{ atributos|length }})</strong>
+                            <strong style="font-size: 0.7rem;">ATRIBUTOS</strong>
                             <div style="font-size: 0.65rem; max-height: 100px; overflow-y: auto;">
-                                {% if atributos %}
-                                <table class="table table-sm mb-0" style="font-size: 0.6rem;">
-                                    <tbody>
-                                    {% for attr in atributos[:5] %}
-                                    <tr>
-                                        <td class="p-0" style="width: 50%;"><strong>{{ attr.atributo }}:</strong></td>
-                                        <td class="p-0">{{ attr.valor[:20] }}</td>
-                                    </tr>
+                                {% if plantilla_config.atributos_seleccionados %}
+                                    {% set atributos_mostrar = [] %}
+                                    {% for attr in atributos %}
+                                        {% if attr.atributo in plantilla_config.atributos_seleccionados %}
+                                            {% set _ = atributos_mostrar.append(attr) %}
+                                        {% endif %}
                                     {% endfor %}
-                                    {% if atributos|length > 5 %}
-                                    <tr><td colspan="2" class="p-0 text-center"><small>+ {{ atributos|length - 5 }} más</small></td></tr>
+                                    {% if atributos_mostrar %}
+                                    <table class="table table-sm mb-0" style="font-size: 0.6rem;">
+                                        <tbody>
+                                        {% for attr in atributos_mostrar %}
+                                        <tr>
+                                            <td class="p-0" style="width: 50%;"><strong>{{ attr.atributo }}:</strong></td>
+                                            <td class="p-0">{{ attr.valor[:20] }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <div class="text-muted text-center p-1">Sin atributos configurados</div>
                                     {% endif %}
-                                    </tbody>
-                                </table>
                                 {% else %}
-                                <div class="text-muted text-center p-1">Sin atributos</div>
+                                <div class="text-muted text-center p-1">Sin atributos configurados</div>
                                 {% endif %}
                             </div>
                         </div>

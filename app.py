@@ -245,6 +245,39 @@ class DatosManuales(db.Model):
     def __repr__(self):
         return f'<DatosManuales {self.sku}>'
 
+class PlantillaTarjeta(db.Model):
+    """
+    Configuración de qué información mostrar en las tarjetas de productos.
+    Jerarquía: subcategoria_id > categoria_id > catalogo_id > general (todos null)
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    catalogo_id = db.Column(db.Integer, db.ForeignKey('catalogo.id'), nullable=True)
+    categoria_id = db.Column(db.Integer, db.ForeignKey('categoria.id'), nullable=True)
+    subcategoria_id = db.Column(db.Integer, db.ForeignKey('subcategoria.id'), nullable=True)
+    
+    # Campos de la ficha del producto a mostrar (JSON array: ['sku', 'titulo', 'ean', 'estado_referencia', 'color', 'marca', 'descripcion', 'dimensiones'])
+    campos_ficha = db.Column(db.Text, nullable=False, default='["sku", "titulo", "ean", "estado_referencia", "color"]')
+    
+    # Atributos a mostrar (JSON array: ['Potencia', 'Capacidad', ...])
+    atributos_seleccionados = db.Column(db.Text, nullable=False, default='[]')
+    
+    # Si es True, esta plantilla se aplica como genérica para la categoría
+    es_generica = db.Column(db.Boolean, default=False)
+    
+    catalogo = db.relationship('Catalogo', backref=db.backref('plantillas', lazy=True))
+    categoria = db.relationship('Categoria', backref=db.backref('plantillas', lazy=True))
+    subcategoria = db.relationship('Subcategoria', backref=db.backref('plantillas', lazy=True))
+    
+    def __repr__(self):
+        if self.subcategoria_id:
+            return f'<PlantillaTarjeta Subcategoria {self.subcategoria_id}>'
+        elif self.categoria_id:
+            return f'<PlantillaTarjeta Categoria {self.categoria_id}>'
+        elif self.catalogo_id:
+            return f'<PlantillaTarjeta Catalogo {self.catalogo_id}>'
+        else:
+            return '<PlantillaTarjeta General>'
+
 # Crear la base de datos si no existe
 # db.create_all() solo crea tablas que no existen, NO borra datos
 with app.app_context():
@@ -1051,11 +1084,15 @@ def ver_catalogo_completo(catalogo_id):
                 totales_marca[marca] = count
                 total_general += count
             
+            # Obtener configuración de plantilla para esta subcategoría
+            plantilla_config = obtener_plantilla_activa(subcat.id)
+            
             subcategorias_data.append({
                 'subcategoria': subcat,
                 'fichas': fichas,
                 'totales_marca': totales_marca,
-                'total_general': total_general
+                'total_general': total_general,
+                'plantilla_config': plantilla_config
             })
         
         categorias_data.append({
@@ -1215,6 +1252,9 @@ def fichas(subcategoria_id):
             datos_manuales_dict[dm.sku] = []
         datos_manuales_dict[dm.sku].append(dm)
     
+    # Obtener configuración de plantilla activa
+    plantilla_config = obtener_plantilla_activa(subcategoria_id)
+    
     return render_template('fichas.html', 
                          subcategoria=subcategoria, 
                          fichas=fichas, 
@@ -1222,7 +1262,8 @@ def fichas(subcategoria_id):
                          totales_marca=totales_marca, 
                          total_general=total_general,
                          datos_manuales_dict=datos_manuales_dict,
-                         categorias=categorias_str)
+                         categorias=categorias_str,
+                         plantilla_config=plantilla_config)
 
 @app.route('/ver_categoria_completa/<int:categoria_id>')
 def ver_categoria_completa(categoria_id):
@@ -1251,11 +1292,15 @@ def ver_categoria_completa(categoria_id):
             totales_marca[marca] = count
             total_general += count
         
+        # Obtener configuración de plantilla para esta subcategoría
+        plantilla_config = obtener_plantilla_activa(subcat.id)
+        
         subcategorias_data.append({
             'subcategoria': subcat,
             'fichas': fichas,
             'totales_marca': totales_marca,
-            'total_general': total_general
+            'total_general': total_general,
+            'plantilla_config': plantilla_config
         })
     
     return render_template('ver_categoria_completa.html',
@@ -1286,13 +1331,17 @@ def ver_fichas(subcategoria_id):
             datos_manuales_dict[dm.sku] = []
         datos_manuales_dict[dm.sku].append(dm)
     
+    # Obtener configuración de plantilla activa
+    plantilla_config = obtener_plantilla_activa(subcategoria_id)
+    
     return render_template('ver_fichas.html', 
                          subcategoria=subcategoria, 
                          fichas=fichas, 
                          marcas=marcas, 
                          totales_marca=totales_marca, 
                          total_general=total_general,
-                         datos_manuales_dict=datos_manuales_dict)
+                         datos_manuales_dict=datos_manuales_dict,
+                         plantilla_config=plantilla_config)
 
 @app.route('/add_fila/<int:subcategoria_id>')
 def add_fila(subcategoria_id):
@@ -1389,6 +1438,150 @@ def delete_tarjeta(id):
     db.session.commit()
     flash('Tarjeta eliminada correctamente.', 'success')
     return redirect(url_for('fichas', subcategoria_id=subcategoria_id))
+
+# ===================================================================
+# GESTIÓN DE PLANTILLAS DE TARJETAS
+# ===================================================================
+
+def obtener_plantilla_activa(subcategoria_id):
+    """
+    Obtiene la plantilla activa para una subcategoría siguiendo la jerarquía:
+    subcategoria > categoria > catalogo > general (default)
+    Retorna un diccionario con campos_ficha y atributos_seleccionados
+    """
+    subcategoria = Subcategoria.query.get(subcategoria_id)
+    if not subcategoria:
+        return {'campos_ficha': ['sku', 'titulo', 'ean', 'estado_referencia', 'color'], 'atributos_seleccionados': []}
+    
+    # Buscar plantilla específica de subcategoría
+    plantilla = PlantillaTarjeta.query.filter_by(subcategoria_id=subcategoria_id).first()
+    if plantilla:
+        return {
+            'campos_ficha': json.loads(plantilla.campos_ficha),
+            'atributos_seleccionados': json.loads(plantilla.atributos_seleccionados)
+        }
+    
+    # Buscar plantilla de categoría
+    plantilla = PlantillaTarjeta.query.filter_by(categoria_id=subcategoria.categoria_id, subcategoria_id=None).first()
+    if plantilla:
+        return {
+            'campos_ficha': json.loads(plantilla.campos_ficha),
+            'atributos_seleccionados': json.loads(plantilla.atributos_seleccionados)
+        }
+    
+    # Buscar plantilla de catálogo
+    plantilla = PlantillaTarjeta.query.filter_by(catalogo_id=subcategoria.categoria.catalogo_id, categoria_id=None, subcategoria_id=None).first()
+    if plantilla:
+        return {
+            'campos_ficha': json.loads(plantilla.campos_ficha),
+            'atributos_seleccionados': json.loads(plantilla.atributos_seleccionados)
+        }
+    
+    # Buscar plantilla general (todos null)
+    plantilla = PlantillaTarjeta.query.filter_by(catalogo_id=None, categoria_id=None, subcategoria_id=None).first()
+    if plantilla:
+        return {
+            'campos_ficha': json.loads(plantilla.campos_ficha),
+            'atributos_seleccionados': json.loads(plantilla.atributos_seleccionados)
+        }
+    
+    # Default: configuración general
+    return {
+        'campos_ficha': ['sku', 'titulo', 'ean', 'estado_referencia', 'color'],
+        'atributos_seleccionados': []
+    }
+
+@app.route('/obtener_atributos_categoria/<int:categoria_id>')
+@login_required
+def obtener_atributos_categoria(categoria_id):
+    """
+    Obtiene todos los atributos únicos disponibles en productos de una categoría
+    """
+    categoria = Categoria.query.get_or_404(categoria_id)
+    
+    # Obtener todos los códigos de categoría (categoría del producto) asociados a esta categoría
+    # a través de las subcategorías y sus productos
+    subcategorias = Subcategoria.query.filter_by(categoria_id=categoria_id).all()
+    subcategoria_ids = [s.id for s in subcategorias]
+    
+    # Obtener productos de estas subcategorías
+    productos_ids = db.session.query(Tarjeta.producto_id).distinct()\
+        .join(Ficha, Tarjeta.ficha_id == Ficha.id)\
+        .filter(Ficha.subcategoria_id.in_(subcategoria_ids))\
+        .filter(Tarjeta.producto_id.isnot(None))\
+        .all()
+    
+    productos_ids = [p[0] for p in productos_ids]
+    
+    # Obtener todos los atributos únicos de estos productos
+    atributos = db.session.query(Atributo.atributo).distinct()\
+        .filter(Atributo.producto_id.in_(productos_ids))\
+        .order_by(Atributo.atributo)\
+        .all()
+    
+    atributos_list = [a[0] for a in atributos]
+    
+    return jsonify({'atributos': atributos_list})
+
+@app.route('/obtener_plantilla_tarjeta/<int:subcategoria_id>')
+@login_required
+def obtener_plantilla_tarjeta(subcategoria_id):
+    """
+    Obtiene la plantilla activa para una subcategoría
+    """
+    config = obtener_plantilla_activa(subcategoria_id)
+    return jsonify(config)
+
+@app.route('/guardar_plantilla_tarjeta', methods=['POST'])
+@login_required
+def guardar_plantilla_tarjeta():
+    """
+    Guarda la configuración de plantilla para una subcategoría
+    """
+    try:
+        data = request.get_json()
+        subcategoria_id = data.get('subcategoria_id')
+        campos_ficha = data.get('campos_ficha', ['sku', 'titulo', 'ean', 'estado_referencia', 'color'])
+        atributos_seleccionados = data.get('atributos_seleccionados', [])
+        es_generica = data.get('es_generica', False)
+        
+        subcategoria = Subcategoria.query.get_or_404(subcategoria_id)
+        
+        if es_generica:
+            # Guardar como plantilla genérica de la categoría
+            # Eliminar plantilla genérica anterior si existe
+            PlantillaTarjeta.query.filter_by(
+                categoria_id=subcategoria.categoria_id,
+                subcategoria_id=None,
+                es_generica=True
+            ).delete()
+            
+            plantilla = PlantillaTarjeta(
+                categoria_id=subcategoria.categoria_id,
+                subcategoria_id=None,
+                campos_ficha=json.dumps(campos_ficha),
+                atributos_seleccionados=json.dumps(atributos_seleccionados),
+                es_generica=True
+            )
+        else:
+            # Guardar como plantilla específica de la subcategoría
+            # Eliminar plantilla anterior si existe
+            PlantillaTarjeta.query.filter_by(subcategoria_id=subcategoria_id).delete()
+            
+            plantilla = PlantillaTarjeta(
+                subcategoria_id=subcategoria_id,
+                campos_ficha=json.dumps(campos_ficha),
+                atributos_seleccionados=json.dumps(atributos_seleccionados),
+                es_generica=False
+            )
+        
+        db.session.add(plantilla)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Plantilla guardada correctamente'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # ===================================================================
 # FUNCIONALIDAD DE EXPORTACIÓN A PDF ELIMINADA

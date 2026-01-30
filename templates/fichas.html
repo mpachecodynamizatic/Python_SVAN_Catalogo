@@ -43,6 +43,9 @@
         <button class="btn btn-primary mb-3" onclick="window.location.href='{{ url_for('add_fila', subcategoria_id=subcategoria.id) }}'">
             <i class="fas fa-plus"></i> Añadir Fila
         </button>
+        <button class="btn btn-info mb-3" data-bs-toggle="modal" data-bs-target="#disenoPlantillaModal">
+            <i class="fas fa-palette"></i> Diseño
+        </button>
         {% endif %}
         
         <!-- Contador de totales -->
@@ -109,35 +112,42 @@
                         <div class="col-6 p-2" style="border-right: 1px solid #dee2e6;">
                             <strong style="font-size: 0.7rem;">PRODUCTO</strong>
                             <div style="font-size: 0.65rem;">
-                                <div><strong>SKU:</strong> {{ producto.sku }}</div>
-                                <div class="text-truncate" title="{{ producto.titulo }}"><strong>Título:</strong> {{ producto.titulo[:30] }}...</div>
-                                <div><strong>Marca:</strong> <span class="badge bg-primary" style="font-size: 0.6rem;">{{ producto.marca }}</span></div>
-                                <div><strong>EAN:</strong> {{ producto.ean or 'N/A' }}</div>
-                                <div><strong>Estado:</strong> {{ producto.estado_referencia or 'N/A' }}</div>
-                                <div><strong>Color:</strong> {{ producto.color or 'N/A' }}</div>
+                                {% if 'sku' in plantilla_config.campos_ficha %}<div><strong>SKU:</strong> {{ producto.sku }}</div>{% endif %}
+                                {% if 'titulo' in plantilla_config.campos_ficha %}<div class="text-truncate" title="{{ producto.titulo }}"><strong>Título:</strong> {{ producto.titulo[:30] }}...</div>{% endif %}
+                                {% if 'marca' in plantilla_config.campos_ficha %}<div><strong>Marca:</strong> <span class="badge bg-primary" style="font-size: 0.6rem;">{{ producto.marca }}</span></div>{% endif %}
+                                {% if 'ean' in plantilla_config.campos_ficha %}<div><strong>EAN:</strong> {{ producto.ean or 'N/A' }}</div>{% endif %}
+                                {% if 'estado_referencia' in plantilla_config.campos_ficha %}<div><strong>Estado:</strong> {{ producto.estado_referencia or 'N/A' }}</div>{% endif %}
+                                {% if 'color' in plantilla_config.campos_ficha %}<div><strong>Color:</strong> {{ producto.color or 'N/A' }}</div>{% endif %}
                             </div>
                         </div>
                         
                         <!-- Bloque inferior derecha: Atributos -->
                         <div class="col-6 p-2">
-                            <strong style="font-size: 0.7rem;">ATRIBUTOS ({{ atributos|length }})</strong>
+                            <strong style="font-size: 0.7rem;">ATRIBUTOS</strong>
                             <div style="font-size: 0.65rem; max-height: 100px; overflow-y: auto;">
-                                {% if atributos %}
-                                <table class="table table-sm mb-0" style="font-size: 0.6rem;">
-                                    <tbody>
-                                    {% for attr in atributos[:5] %}
-                                    <tr>
-                                        <td class="p-0" style="width: 50%;"><strong>{{ attr.atributo }}:</strong></td>
-                                        <td class="p-0">{{ attr.valor[:20] }}</td>
-                                    </tr>
+                                {% if plantilla_config.atributos_seleccionados %}
+                                    {% set atributos_mostrar = [] %}
+                                    {% for attr in atributos %}
+                                        {% if attr.atributo in plantilla_config.atributos_seleccionados %}
+                                            {% set _ = atributos_mostrar.append(attr) %}
+                                        {% endif %}
                                     {% endfor %}
-                                    {% if atributos|length > 5 %}
-                                    <tr><td colspan="2" class="p-0 text-center"><small>+ {{ atributos|length - 5 }} más</small></td></tr>
+                                    {% if atributos_mostrar %}
+                                    <table class="table table-sm mb-0" style="font-size: 0.6rem;">
+                                        <tbody>
+                                        {% for attr in atributos_mostrar %}
+                                        <tr>
+                                            <td class="p-0" style="width: 50%;"><strong>{{ attr.atributo }}:</strong></td>
+                                            <td class="p-0">{{ attr.valor[:20] }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                        </tbody>
+                                    </table>
+                                    {% else %}
+                                    <div class="text-muted text-center p-1">Sin atributos configurados</div>
                                     {% endif %}
-                                    </tbody>
-                                </table>
                                 {% else %}
-                                <div class="text-muted text-center p-1">Sin atributos</div>
+                                <div class="text-muted text-center p-1">Sin atributos configurados</div>
                                 {% endif %}
                             </div>
                         </div>
@@ -397,6 +407,142 @@
         {% endif %}
         {% endfor %}
     {% endfor %}
+
+    <!-- Modal de Diseño de Plantilla -->
+    <div class="modal fade" id="disenoPlantillaModal" tabindex="-1" aria-labelledby="disenoPlantillaModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl">
+            <div class="modal-content">
+                <div class="modal-header bg-info text-white">
+                    <h5 class="modal-title" id="disenoPlantillaModalLabel">
+                        <i class="fas fa-palette"></i> Diseñar Plantilla de Tarjeta
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> Selecciona qué atributos deseas mostrar en las tarjetas de esta subcategoría.
+                    </div>
+                    
+                    <h6 class="mb-3"><i class="fas fa-list"></i> Atributos Disponibles</h6>
+                    <div id="atributos-disponibles" class="mb-3">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="guardarComoGenerica">
+                        <label class="form-check-label" for="guardarComoGenerica">
+                            <strong>Guardar como plantilla genérica para toda la categoría</strong>
+                            <br>
+                            <small class="text-muted">Si activas esta opción, esta configuración se aplicará a todas las subcategorías de "{{ subcategoria.categoria.cod_categoria }}" que no tengan una configuración específica.</small>
+                        </label>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="guardarPlantilla()">
+                        <i class="fas fa-save"></i> Guardar Plantilla
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let atributosDisponibles = [];
+        let atributosSeleccionados = [];
+        
+        // Cargar atributos disponibles cuando se abre el modal
+        document.getElementById('disenoPlantillaModal').addEventListener('show.bs.modal', function (event) {
+            cargarAtributosYPlantilla();
+        });
+        
+        async function cargarAtributosYPlantilla() {
+            try {
+                // Cargar atributos disponibles
+                const respAtributos = await fetch('/obtener_atributos_categoria/{{ subcategoria.categoria_id }}');
+                const dataAtributos = await respAtributos.json();
+                atributosDisponibles = dataAtributos.atributos;
+                
+                // Cargar plantilla actual
+                const respPlantilla = await fetch('/obtener_plantilla_tarjeta/{{ subcategoria.id }}');
+                const dataPlantilla = await respPlantilla.json();
+                atributosSeleccionados = dataPlantilla.atributos_seleccionados || [];
+                
+                // Renderizar la lista de atributos con checkboxes
+                const container = document.getElementById('atributos-disponibles');
+                if (atributosDisponibles.length === 0) {
+                    container.innerHTML = '<p class="text-muted">No hay atributos disponibles en esta categoría.</p>';
+                } else {
+                    let html = '<div class="row">';
+                    atributosDisponibles.forEach((atributo, index) => {
+                        const checked = atributosSeleccionados.includes(atributo) ? 'checked' : '';
+                        html += `
+                            <div class="col-md-4 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="attr_${index}" value="${atributo}" ${checked}>
+                                    <label class="form-check-label" for="attr_${index}">
+                                        ${atributo}
+                                    </label>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    container.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Error cargando atributos:', error);
+                document.getElementById('atributos-disponibles').innerHTML = 
+                    '<div class="alert alert-danger">Error al cargar los atributos. Por favor, intenta de nuevo.</div>';
+            }
+        }
+        
+        async function guardarPlantilla() {
+            // Recolectar los atributos seleccionados
+            const checkboxes = document.querySelectorAll('#atributos-disponibles input[type="checkbox"]:checked');
+            const seleccionados = Array.from(checkboxes).map(cb => cb.value);
+            
+            const esGenerica = document.getElementById('guardarComoGenerica').checked;
+            
+            const data = {
+                subcategoria_id: {{ subcategoria.id }},
+                campos_ficha: ['sku', 'titulo', 'ean', 'estado_referencia', 'color'],
+                atributos_seleccionados: seleccionados,
+                es_generica: esGenerica
+            };
+            
+            try {
+                const response = await fetch('/guardar_plantilla_tarjeta', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Cerrar modal
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('disenoPlantillaModal'));
+                    modal.hide();
+                    
+                    // Mostrar mensaje de éxito y recargar página
+                    alert('Plantilla guardada correctamente. La página se recargará para aplicar los cambios.');
+                    window.location.reload();
+                } else {
+                    alert('Error al guardar la plantilla: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error guardando plantilla:', error);
+                alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
+            }
+        }
+    </script>
 
 </body>
 </html>
