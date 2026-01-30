@@ -61,7 +61,7 @@
                         <a href="{{ url_for('categoria', categoria_id=categoria.id) }}" class="btn btn-warning btn-sm">Configurar</a>
                         {% endif %}
                         {% if session.usuario in ['admin', 'producto'] %}
-                        <a href="{{ url_for('delete_categoria', id=categoria.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
+                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteCategoriaModal{{ categoria.id }}">Eliminar</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -69,6 +69,34 @@
             </tbody>
         </table>
     </div>
+
+    <!-- Modales de confirmación de eliminación para cada categoría -->
+    {% for categoria in categorias %}
+    <div class="modal fade" id="deleteCategoriaModal{{ categoria.id }}" tabindex="-1" aria-labelledby="deleteCategoriaModalLabel{{ categoria.id }}" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteCategoriaModalLabel{{ categoria.id }}">
+                        <i class="fas fa-exclamation-triangle"></i> Confirmar eliminación
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">¿Estás seguro de que deseas eliminar la categoría <strong>{{ categoria.cod_categoria }}</strong>?</p>
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-info-circle"></i> Esta acción no se puede deshacer y eliminará todas las subcategorías asociadas.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="{{ url_for('delete_categoria', id=categoria.id) }}" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Eliminar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 
     <!-- Modal para Añadir Categoría -->
     <div class="modal fade" id="addModal" tabindex="-1" aria-labelledby="addModalLabel" aria-hidden="true">

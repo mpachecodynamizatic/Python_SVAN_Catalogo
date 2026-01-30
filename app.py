@@ -203,6 +203,7 @@ class Producto(db.Model):
     marca = db.Column(db.String(10), nullable=False)  # AS, WD, SV, HY, NL, FR
     producto_id = db.Column(db.String(50))  # ProductoId del CSV
     sku = db.Column(db.String(50))
+    categoria = db.Column(db.String(100), default='', server_default='')  # Categoría del producto (INDUCCIONES, VITROCERAMICAS, etc.)
     ean = db.Column(db.String(50))
     descripcion = db.Column(db.Text)
     titulo = db.Column(db.Text)
@@ -302,7 +303,7 @@ def productos():
     ).group_by(Atributo.producto_id).subquery()
     
     if buscar:
-        # Buscar en SKU, marca, título, descripción
+        # Buscar en SKU, marca, título, descripción, categoría
         query = db.session.query(Producto, func.coalesce(atributos_count.c.count, 0).label('num_atributos')).outerjoin(
             atributos_count, Producto.id == atributos_count.c.producto_id
         ).filter(
@@ -311,7 +312,8 @@ def productos():
                 Producto.marca.like(f'%{buscar}%'),
                 Producto.titulo.like(f'%{buscar}%'),
                 Producto.descripcion.like(f'%{buscar}%'),
-                Producto.ean.like(f'%{buscar}%')
+                Producto.ean.like(f'%{buscar}%'),
+                Producto.categoria.like(f'%{buscar}%')
             )
         )
     else:
@@ -597,6 +599,7 @@ def importar_productos_con_progreso(filepath):
                                 marca=marca_map[marca_original],
                                 producto_id=row.get('ProductoId', '').strip(),
                                 sku=sku,
+                                categoria=row.get('Categoria', '').strip(),
                                 ean=row.get('Ean', '').strip(),
                                 descripcion=row.get('Descripcion', '').strip(),
                                 titulo=row.get('Titulo', '').strip(),
@@ -1186,6 +1189,16 @@ def fichas(subcategoria_id):
     fichas = Ficha.query.filter_by(subcategoria_id=subcategoria_id).order_by(Ficha.fila_numero).all()
     marcas = subcategoria.categoria.catalogo.marcas.split(',')
     
+    # Obtener las categorías de productos que ya están en esta subcategoría
+    categorias_productos = db.session.query(Producto.categoria).distinct()\
+        .join(Tarjeta, Producto.id == Tarjeta.producto_id)\
+        .join(Ficha, Tarjeta.ficha_id == Ficha.id)\
+        .filter(Ficha.subcategoria_id == subcategoria_id)\
+        .filter(Producto.categoria != None)\
+        .filter(Producto.categoria != '')\
+        .all()
+    categorias_str = ','.join([c[0] for c in categorias_productos]) if categorias_productos else ''
+    
     # Calcular totales por marca
     totales_marca = {}
     total_general = 0
@@ -1208,7 +1221,8 @@ def fichas(subcategoria_id):
                          marcas=marcas, 
                          totales_marca=totales_marca, 
                          total_general=total_general,
-                         datos_manuales_dict=datos_manuales_dict)
+                         datos_manuales_dict=datos_manuales_dict,
+                         categorias=categorias_str)
 
 @app.route('/ver_categoria_completa/<int:categoria_id>')
 def ver_categoria_completa(categoria_id):
@@ -1303,6 +1317,7 @@ def delete_fila(id):
 def buscar_productos_ajax():
     buscar = request.args.get('q', '').strip()
     marca = request.args.get('marca', '').strip()
+    categoria = request.args.get('categoria', '').strip()
     
     if not buscar or len(buscar) < 2:
         return {'productos': []}
@@ -1315,8 +1330,13 @@ def buscar_productos_ajax():
         )
     )
     
+    # Filtrar por marca
     if marca:
         query = query.filter(Producto.marca == marca)
+    
+    # Filtrar por categoría del producto
+    if categoria:
+        query = query.filter(Producto.categoria == categoria)
     
     productos = query.limit(10).all()
     
@@ -1327,7 +1347,8 @@ def buscar_productos_ajax():
             'marca': p.marca,
             'titulo': p.titulo,
             'dimensiones': p.dimensiones,
-            'color': p.color
+            'color': p.color,
+            'categoria': p.categoria
         } for p in productos]
     }
 
@@ -1406,6 +1427,21 @@ def init_database():
             # db.create_all() es SEGURO - solo crea tablas que no existen
             # NO elimina ni modifica datos existentes
             db.create_all()
+            
+            # Agregar columna categoria si no existe
+            try:
+                from sqlalchemy import text
+                db.session.execute(text("SELECT categoria FROM producto LIMIT 1"))
+                print("✅ Columna 'categoria' ya existe en tabla producto")
+            except Exception as e:
+                print("⚠️  Columna 'categoria' no existe, agregándola...")
+                try:
+                    db.session.execute(text("ALTER TABLE producto ADD COLUMN categoria VARCHAR(100) DEFAULT ''"))
+                    db.session.commit()
+                    print("✅ Columna 'categoria' agregada exitosamente")
+                except Exception as e2:
+                    print(f"❌ Error agregando columna categoria: {e2}")
+                    db.session.rollback()
             
             db_file_path = os.path.join(instance_path, 'catalogos_nuevo.db')
             if os.path.exists(db_file_path):

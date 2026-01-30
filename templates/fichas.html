@@ -160,9 +160,9 @@
                                 <i class="fas fa-eye"></i> Ver
                             </a>
                             {% if session.usuario in ['admin', 'producto'] %}
-                            <a href="{{ url_for('delete_tarjeta', id=tarjeta.id) }}" class="btn btn-danger btn-sm" style="font-size: 0.6rem; padding: 2px 6px;" onclick="return confirm('¿Eliminar este producto?')" title="Eliminar">
+                            <button type="button" class="btn btn-danger btn-sm" style="font-size: 0.6rem; padding: 2px 6px;" data-bs-toggle="modal" data-bs-target="#deleteTarjetaModal{{ tarjeta.id }}" title="Eliminar">
                                 <i class="fas fa-trash"></i> Eliminar
-                            </a>
+                            </button>
                             {% endif %}
                         </div>
                     </div>
@@ -204,9 +204,9 @@
             </div>
             <div class="col-1 d-flex align-items-center">
                 {% if session.usuario in ['admin', 'producto'] %}
-                <a href="{{ url_for('delete_fila', id=ficha.id) }}" class="btn btn-danger btn-sm" onclick="return confirm('¿Eliminar toda la fila?')">
+                <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteFilaModal{{ ficha.id }}">
                     <i class="fas fa-trash"></i>
-                </a>
+                </button>
                 {% endif %}
             </div>
         </div>
@@ -256,6 +256,7 @@
     <script>
         const addModal = document.getElementById('addModal');
         let marcaActual = '';
+        const categoriasDisponibles = '{{ categorias | safe }}'.split(',').filter(c => c.trim());
         
         addModal.addEventListener('show.bs.modal', function (event) {
             const button = event.relatedTarget;
@@ -287,7 +288,11 @@
             }
             
             timeoutId = setTimeout(() => {
-                fetch(`/buscar_productos_ajax?q=${encodeURIComponent(query)}&marca=${encodeURIComponent(marcaActual)}`)
+                // Si hay categorías disponibles, buscar en la primera (normalmente solo hay una por subcategoría)
+                const categoriaFiltro = categoriasDisponibles.length > 0 ? categoriasDisponibles[0] : '';
+                const url = `/buscar_productos_ajax?q=${encodeURIComponent(query)}&marca=${encodeURIComponent(marcaActual)}${categoriaFiltro ? '&categoria=' + encodeURIComponent(categoriaFiltro) : ''}`;
+                
+                fetch(url)
                     .then(response => response.json())
                     .then(data => {
                         const resultados = document.getElementById('resultados_busqueda');
@@ -335,5 +340,63 @@
             document.getElementById('btnAnadir').disabled = false;
         }
     </script>
+
+    <!-- Modales de confirmación de eliminación -->
+    {% for ficha in fichas %}
+        <!-- Modal para eliminar fila -->
+        <div class="modal fade" id="deleteFilaModal{{ ficha.id }}" tabindex="-1" aria-labelledby="deleteFilaModalLabel{{ ficha.id }}" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title" id="deleteFilaModalLabel{{ ficha.id }}">
+                            <i class="fas fa-exclamation-triangle"></i> Confirmar eliminación
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3">¿Estás seguro de que deseas eliminar toda la fila <strong>{{ ficha.fila_numero }}</strong>?</p>
+                        <div class="alert alert-warning mb-0">
+                            <i class="fas fa-info-circle"></i> Esta acción no se puede deshacer y eliminará todas las tarjetas de esta fila.
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <a href="{{ url_for('delete_fila', id=ficha.id) }}" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Eliminar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Modal para eliminar cada tarjeta -->
+        {% for tarjeta in ficha.tarjetas %}
+        {% if tarjeta.producto %}
+        <div class="modal fade" id="deleteTarjetaModal{{ tarjeta.id }}" tabindex="-1" aria-labelledby="deleteTarjetaModalLabel{{ tarjeta.id }}" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header bg-danger text-white">
+                        <h5 class="modal-title" id="deleteTarjetaModalLabel{{ tarjeta.id }}">
+                            <i class="fas fa-exclamation-triangle"></i> Confirmar eliminación
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="mb-3">¿Estás seguro de que deseas eliminar el producto <strong>{{ tarjeta.producto.sku }}</strong>?</p>
+                        <p class="text-muted">{{ tarjeta.producto.titulo or 'Sin título' }}</p>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <a href="{{ url_for('delete_tarjeta', id=tarjeta.id) }}" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Eliminar
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+    {% endfor %}
+
 </body>
 </html>

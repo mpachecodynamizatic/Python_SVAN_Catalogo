@@ -90,7 +90,7 @@
                         {% endif %}
                         {% if session.usuario in ['admin', 'producto'] %}
                         <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#editCatalogoModal{{ catalogo.id }}" data-catalogo-id="{{ catalogo.id }}" data-codigo="{{ catalogo.codigo }}" data-descripcion="{{ catalogo.descripcion }}" data-marcas="{{ catalogo.marcas }}">Editar</button>
-                        <a href="{{ url_for('delete_catalogo', id=catalogo.id) }}" class="btn btn-danger btn-sm">Eliminar</a>
+                        <button type="button" class="btn btn-danger btn-sm" data-bs-toggle="modal" data-bs-target="#deleteCatalogoModal{{ catalogo.id }}">Eliminar</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -263,6 +263,34 @@
             </div>
         </div>
     </div>
+
+    <!-- Modales de confirmación de eliminación para cada catálogo -->
+    {% for catalogo in catalogos %}
+    <div class="modal fade" id="deleteCatalogoModal{{ catalogo.id }}" tabindex="-1" aria-labelledby="deleteCatalogoModalLabel{{ catalogo.id }}" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="deleteCatalogoModalLabel{{ catalogo.id }}">
+                        <i class="fas fa-exclamation-triangle"></i> Confirmar eliminación
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">¿Estás seguro de que deseas eliminar el catálogo <strong>{{ catalogo.codigo }}</strong>?</p>
+                    <div class="alert alert-warning mb-0">
+                        <i class="fas fa-info-circle"></i> Esta acción no se puede deshacer y eliminará todas las categorías y subcategorías asociadas.
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <a href="{{ url_for('delete_catalogo', id=catalogo.id) }}" class="btn btn-danger">
+                        <i class="fas fa-trash"></i> Eliminar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>

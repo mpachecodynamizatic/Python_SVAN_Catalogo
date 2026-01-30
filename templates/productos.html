@@ -62,7 +62,7 @@
                         <div class="input-group">
                             <span class="input-group-text"><i class="fas fa-search"></i></span>
                             <input type="text" class="form-control" name="buscar" 
-                                   placeholder="Buscar por SKU, Marca, Título, EAN o Descripción..." 
+                                   placeholder="Buscar por SKU, Marca, Categoría, Título, EAN o Descripción..." 
                                    value="{{ buscar or '' }}"
                                    autofocus>
                         </div>
@@ -102,6 +102,7 @@
                 <tr>
                     <th>SKU</th>
                     <th>Marca</th>
+                    <th>Categoría</th>
                     <th>Título</th>
                     <th>Dimensiones</th>
                     <th>Color</th>
@@ -115,6 +116,7 @@
                 <tr>
                     <td>{{ producto.sku }}</td>
                     <td>{{ producto.marca }}</td>
+                    <td>{{ producto.categoria or 'N/A' }}</td>
                     <td>{{ producto.titulo }}</td>
                     <td>{{ producto.dimensiones }}</td>
                     <td>{{ producto.color }}</td>
