@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Categorías</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        .breadcrumb-modern {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            padding: 10px 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        .breadcrumb-modern .breadcrumb-item a {
+            color: #fff;
+            text-decoration: none;
+        }
+        .breadcrumb-modern .breadcrumb-item.active {
+            color: #ffd700;
+        }
+        .breadcrumb-modern .breadcrumb-item + .breadcrumb-item::before {
+            content: "\f105";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            color: #ffd700;
+        }
+        .table-sm td {
+            padding: 0.3rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid mt-5" style="width: 90%; margin: 0 auto;">
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb breadcrumb-modern">
+                <li class="breadcrumb-item"><a href="{{ url_for('index') }}"><i class="fas fa-home"></i> Catálogos</a></li>
+                <li class="breadcrumb-item active" aria-current="page">Categorías</li>
+            </ol>
+        </nav>
+        
+        <div class="row mb-3">
+            <div class="col">
+                <h2>
+                    <i class="fas fa-tags"></i> Categorías
+                    <span class="badge bg-primary">{{ total_categorias }} total</span>
+                </h2>
+            </div>
+        </div>
+        
+        <div class="card">
+            <div class="card-body">
+                <table class="table table-striped table-hover table-sm">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>Catálogo</th>
+                            <th>Código Categoría</th>
+                            <th>Descripción</th>
+                            <th>Subcategorías</th>
+                            <th>Plantilla Predeterminada</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cat_data in categorias_data %}
+                        <tr>
+                            <td><span class="badge bg-info">{{ cat_data.categoria.catalogo.codigo }}</span></td>
+                            <td><strong>{{ cat_data.categoria.cod_categoria }}</strong></td>
+                            <td>{{ cat_data.categoria.descripcion }}</td>
+                            <td><span class="badge bg-secondary">{{ cat_data.num_subcategorias }}</span></td>
+                            <td>
+                                {% if cat_data.tiene_plantilla %}
+                                <span class="badge bg-success"><i class="fas fa-check"></i> Configurada</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-times"></i> Sin configurar</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-info btn-sm" onclick="editarPlantillaCategoria({{ cat_data.categoria.id }}, '{{ cat_data.categoria.cod_categoria }}')">
+                                    <i class="fas fa-palette"></i> 
+                                    {% if cat_data.tiene_plantilla %}Editar{% else %}Configurar{% endif %} Plantilla
+                                </button>
+                                <a href="{{ url_for('categoria', categoria_id=cat_data.categoria.id) }}" class="btn btn-primary btn-sm">
+                                    <i class="fas fa-eye"></i> Ver
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Diseño de Plantilla de Categoría -->
+    <div class="modal fade" id="disenoPlantillaCategoriaModal" tabindex="-1" aria-labelledby="disenoPlantillaCategoriaModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="disenoPlantillaCategoriaModalLabel">
+                        <i class="fas fa-palette"></i> Configurar Plantilla Predeterminada de Categoría
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> Esta configuración se aplicará por defecto a todas las subcategorías de <strong id="nombreCategoriaModal"></strong> que no tengan una configuración específica.
+                    </div>
+                    
+                    <h6 class="mb-3"><i class="fas fa-list"></i> Atributos Disponibles</h6>
+                    <div id="atributos-disponibles-categoria" class="mb-3">
+                        <div class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Cargando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="guardarPlantillaCategoria()">
+                        <i class="fas fa-save"></i> Guardar Plantilla
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let categoriaIdActual = null;
+        let atributosDisponibles = [];
+        let atributosSeleccionados = [];
+        
+        async function editarPlantillaCategoria(categoriaId, nombreCategoria) {
+            categoriaIdActual = categoriaId;
+            document.getElementById('nombreCategoriaModal').textContent = nombreCategoria;
+            
+            // Abrir modal
+            const modal = new bootstrap.Modal(document.getElementById('disenoPlantillaCategoriaModal'));
+            modal.show();
+            
+            // Cargar atributos y plantilla actual
+            await cargarAtributosYPlantillaCategoria(categoriaId);
+        }
+        
+        async function cargarAtributosYPlantillaCategoria(categoriaId) {
+            try {
+                // Cargar atributos disponibles
+                const respAtributos = await fetch(`/obtener_atributos_categoria/${categoriaId}`);
+                const dataAtributos = await respAtributos.json();
+                atributosDisponibles = dataAtributos.atributos;
+                
+                // Cargar plantilla actual de la categoría
+                const respPlantilla = await fetch(`/obtener_plantilla_categoria/${categoriaId}`);
+                const dataPlantilla = await respPlantilla.json();
+                atributosSeleccionados = dataPlantilla.atributos_seleccionados || [];
+                
+                // Renderizar la lista de atributos con checkboxes
+                const container = document.getElementById('atributos-disponibles-categoria');
+                if (atributosDisponibles.length === 0) {
+                    container.innerHTML = '<p class="text-muted">No hay atributos disponibles en esta categoría.</p>';
+                } else {
+                    let html = '<div class="row">';
+                    atributosDisponibles.forEach((atributo, index) => {
+                        const checked = atributosSeleccionados.includes(atributo) ? 'checked' : '';
+                        html += `
+                            <div class="col-md-4 mb-2">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="attr_cat_${index}" value="${atributo}" ${checked}>
+                                    <label class="form-check-label" for="attr_cat_${index}">
+                                        ${atributo}
+                                    </label>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    container.innerHTML = html;
+                }
+            } catch (error) {
+                console.error('Error cargando atributos:', error);
+                document.getElementById('atributos-disponibles-categoria').innerHTML = 
+                    '<div class="alert alert-danger">Error al cargar los atributos. Por favor, intenta de nuevo.</div>';
+            }
+        }
+        
+        async function guardarPlantillaCategoria() {
+            // Recolectar los atributos seleccionados
+            const checkboxes = document.querySelectorAll('#atributos-disponibles-categoria input[type="checkbox"]:checked');
+            const seleccionados = Array.from(checkboxes).map(cb => cb.value);
+            
+            const data = {
+                categoria_id: categoriaIdActual,
+                campos_ficha: ['sku', 'titulo', 'ean', 'estado_referencia', 'color'],
+                atributos_seleccionados: seleccionados
+            };
+            
+            try {
+                const response = await fetch('/guardar_plantilla_categoria', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Cerrar modal de diseño
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('disenoPlantillaCategoriaModal'));
+                    modal.hide();
+                    
+                    // Mostrar mensaje de éxito en modal centrado
+                    mostrarMensajeExito('Plantilla guardada correctamente. La página se recargará para aplicar los cambios.');
+                } else {
+                    alert('Error al guardar la plantilla: ' + result.message);
+                }
+            } catch (error) {
+                console.error('Error guardando plantilla:', error);
+                alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
+            }
+        }
+        
+        function mostrarMensajeExito(mensaje) {
+            // Crear modal dinámicamente
+            const modalHtml = `
+                <div class="modal fade" id="mensajeExitoModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-check-circle"></i> Éxito
+                                </h5>
+                            </div>
+                            <div class="modal-body">
+                                <p class="mb-0">${mensaje}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-success" data-bs-dismiss="modal" onclick="window.location.reload()">Aceptar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Añadir al DOM
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('mensajeExitoModal'));
+            modal.show();
+            
+            // Limpiar del DOM al cerrar
+            document.getElementById('mensajeExitoModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
+        }
+    </script>
+</body>
+</html>

@@ -11,9 +11,11 @@ Se ha implementado un sistema de configuración dinámica que permite definir qu
 El sistema utiliza una jerarquía de configuraciones que se aplica en el siguiente orden:
 
 1. **Plantilla específica de subcategoría** - La más específica
-2. **Plantilla genérica de categoría** - Se aplica a todas las subcategorías sin configuración específica
+2. **Plantilla genérica de categoría** - Se aplica a todas las subcategorías de esa categoría sin configuración específica, **independientemente del catálogo**
 3. **Plantilla de catálogo** - Se aplica a todas las categorías del catálogo
 4. **Configuración general por defecto** - Se aplica cuando no hay ninguna configuración específica
+
+**Nota importante:** Las plantillas genéricas de categoría son independientes del catálogo. Esto significa que si una categoría está presente en múltiples catálogos, su plantilla genérica se aplicará en todos ellos.
 
 ### 2. Configuración General por Defecto
 
@@ -47,6 +49,7 @@ En la pantalla de **Fichas** (edición), se ha agregado un botón **"Diseño"** 
 #### Guardar como plantilla genérica de la categoría
 - Activando el checkbox "Guardar como plantilla genérica"
 - La configuración se aplicará a **todas las subcategorías** de la categoría que no tengan una configuración específica
+- **La plantilla será válida para cualquier catálogo en el que esté presente esta categoría**
 - Si luego creas una configuración específica para una subcategoría, esa tendrá prioridad sobre la genérica
 
 ## Base de Datos
@@ -141,6 +144,9 @@ Guarda la configuración de plantilla.
 4. **Marca** el checkbox "Guardar como plantilla genérica para toda la categoría"
 5. Haz clic en **"Guardar Plantilla"**
 6. La configuración se aplicará a todas las subcategorías de esa categoría que no tengan configuración específica
+7. **La plantilla será válida en todos los catálogos** donde aparezca esta categoría
+
+**Alternativa:** Puedes usar la pantalla **Categorías** del menú principal para gestionar las plantillas genéricas de forma centralizada.
 
 ## Visualización
 
@@ -198,7 +204,7 @@ Los templates usan la siguiente lógica para mostrar solo los atributos seleccio
    - Diseño → Seleccionar: "Capacidad", "Rpm", "Clase energética"
    - Marcar "Guardar como genérica"
    - Guardar
-   - **Resultado:** Todas las subcategorías de LAVADORAS mostrarán estos 3 atributos
+   - **Resultado:** Todas las subcategorías de LAVADORAS mostrarán estos 3 atributos **en todos los catálogos** donde aparezca LAVADORAS
 
 2. **Configuración específica para "LAVADORA CARGA SUP":**
    - Entrar en "LAVADORA CARGA SUP"

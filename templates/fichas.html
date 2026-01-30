@@ -410,7 +410,7 @@
 
     <!-- Modal de Diseño de Plantilla -->
     <div class="modal fade" id="disenoPlantillaModal" tabindex="-1" aria-labelledby="disenoPlantillaModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-xl">
+        <div class="modal-dialog modal-xl modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header bg-info text-white">
                     <h5 class="modal-title" id="disenoPlantillaModalLabel">
@@ -527,13 +527,12 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    // Cerrar modal
+                    // Cerrar modal de diseño
                     const modal = bootstrap.Modal.getInstance(document.getElementById('disenoPlantillaModal'));
                     modal.hide();
                     
-                    // Mostrar mensaje de éxito y recargar página
-                    alert('Plantilla guardada correctamente. La página se recargará para aplicar los cambios.');
-                    window.location.reload();
+                    // Mostrar mensaje de éxito en modal centrado
+                    mostrarMensajeExito('Plantilla guardada correctamente. La página se recargará para aplicar los cambios.');
                 } else {
                     alert('Error al guardar la plantilla: ' + result.message);
                 }
@@ -541,6 +540,41 @@
                 console.error('Error guardando plantilla:', error);
                 alert('Error al guardar la plantilla. Por favor, intenta de nuevo.');
             }
+        }
+        
+        function mostrarMensajeExito(mensaje) {
+            // Crear modal dinámicamente
+            const modalHtml = `
+                <div class="modal fade" id="mensajeExitoModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header bg-success text-white">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-check-circle"></i> Éxito
+                                </h5>
+                            </div>
+                            <div class="modal-body">
+                                <p class="mb-0">${mensaje}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-success" data-bs-dismiss="modal" onclick="window.location.reload()">Aceptar</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Añadir al DOM
+            document.body.insertAdjacentHTML('beforeend', modalHtml);
+            
+            // Mostrar modal
+            const modal = new bootstrap.Modal(document.getElementById('mensajeExitoModal'));
+            modal.show();
+            
+            // Limpiar del DOM al cerrar
+            document.getElementById('mensajeExitoModal').addEventListener('hidden.bs.modal', function() {
+                this.remove();
+            });
         }
     </script>
 

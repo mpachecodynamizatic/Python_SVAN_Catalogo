@@ -275,6 +275,51 @@ Centralizar la gestión de productos y catálogos, facilitando la importación m
 - Información completa de cada tarjeta
 - Vista optimizada para revisión y control de calidad
 
+#### RF-023-A: Diseñar Plantilla de Visualización de Tarjetas
+**Descripción:** Configuración dinámica de qué información mostrar en las tarjetas de productos por categoría.  
+**Prioridad:** Alta  
+
+**Criterios de Aceptación:**
+- Acceso desde pantalla de fichas mediante botón "Diseño"
+- Modal de configuración con tamaño extra grande (modal-xl)
+- Lista de atributos disponibles mostrada en 3 columnas
+- Checkboxes para seleccionar atributos a mostrar
+- Opción para guardar como plantilla genérica de categoría
+- Carga dinámica de atributos disponibles desde la BD
+
+**Jerarquía de Plantillas:**
+1. Plantilla específica de subcategoría (mayor prioridad)
+2. Plantilla genérica de categoría
+3. Plantilla de catálogo
+4. Configuración general por defecto (menor prioridad)
+
+**Configuración General por Defecto:**
+- Campos mostrados: SKU, Título, EAN, Estado, Color
+- Marca: NO se muestra por defecto
+- Atributos: Ninguno (bloque vacío)
+
+**Funcionalidad de Guardado:**
+- **Guardar para subcategoría:** Aplica solo a la subcategoría actual
+- **Guardar como genérica:** Aplica a todas las subcategorías de la categoría sin configuración específica
+
+#### RF-023-B: Aplicar Plantilla en Visualización
+**Descripción:** Las vistas de tarjetas deben respetar la configuración de plantilla activa.  
+**Prioridad:** Alta  
+
+**Criterios de Aceptación:**
+- Aplicación automática en vista de Fichas (edición)
+- Aplicación en vista de Ver Fichas (solo lectura)
+- Aplicación en vista de Ver Categoría Completa
+- Aplicación en vista de Ver Catálogo Completo
+- Filtrado dinámico de campos de producto según configuración
+- Filtrado dinámico de atributos según selección
+- Mensaje "Sin atributos configurados" cuando no hay atributos seleccionados
+
+**APIs Implementadas:**
+- `GET /obtener_atributos_categoria/<categoria_id>` - Lista atributos disponibles
+- `GET /obtener_plantilla_tarjeta/<subcategoria_id>` - Obtiene plantilla activa
+- `POST /guardar_plantilla_tarjeta` - Guarda configuración de plantilla
+
 ---
 
 ### 2.6 MÓDULO DE GESTIÓN DE PRODUCTOS
@@ -606,6 +651,28 @@ Centralizar la gestión de productos y catálogos, facilitando la importación m
 **Relaciones:**
 - Relación lógica con Producto por SKU
 
+#### Entidad: PlantillaTarjeta
+**Descripción:** Configuración de visualización de información en tarjetas de productos.  
+**Atributos:**
+- id (INTEGER, PK, auto-increment)
+- catalogo_id (INTEGER, FK → Catalogo.id, NULLABLE)
+- categoria_id (INTEGER, FK → Categoria.id, NULLABLE)
+- subcategoria_id (INTEGER, FK → Subcategoria.id, NULLABLE)
+- campos_ficha (TEXT, NOT NULL, DEFAULT '["sku", "titulo", "ean", "estado_referencia", "color"]') - JSON array
+- atributos_seleccionados (TEXT, NOT NULL, DEFAULT '[]') - JSON array
+- es_generica (BOOLEAN, DEFAULT False)
+
+**Relaciones:**
+- Muchos a uno con Catalogo (opcional)
+- Muchos a uno con Categoria (opcional)
+- Muchos a uno con Subcategoria (opcional)
+
+**Jerarquía de Prioridad:**
+1. Plantilla con subcategoria_id (más específica)
+2. Plantilla con categoria_id y es_generica=True
+3. Plantilla con catalogo_id
+4. Plantilla sin IDs (configuración general por defecto)
+
 ---
 
 ## 4. REQUERIMIENTOS NO FUNCIONALES
@@ -794,6 +861,22 @@ Los atributos se ordenan según el campo "orden" que proviene del campo "OrdenEn
 ### RN-010: Datos Manuales por SKU
 Los datos manuales se relacionan con productos únicamente por SKU, no por ID interno.
 
+### RN-011: Jerarquía de Plantillas de Visualización
+La configuración de visualización de tarjetas sigue una jerarquía estricta:
+1. Si existe plantilla específica de subcategoría, se usa esa
+2. Si no, se busca plantilla genérica de la categoría padre
+3. Si no, se busca plantilla del catálogo
+4. Si no existe ninguna, se aplica configuración por defecto
+
+### RN-012: Configuración por Defecto de Tarjetas
+Sin plantilla específica, las tarjetas muestran únicamente: SKU, Título, EAN, Estado y Color. La marca NO se muestra y el bloque de atributos queda vacío.
+
+### RN-013: Plantillas Genéricas de Categoría
+Una plantilla marcada como "genérica" para una categoría se aplica automáticamente a todas las subcategorías de esa categoría que no tengan configuración específica.
+
+### RN-014: Atributos Disponibles por Categoría
+Los atributos disponibles para configurar se obtienen dinámicamente de todos los productos existentes en las subcategorías de esa categoría.
+
 ---
 
 ## 9. GLOSARIO
@@ -803,6 +886,9 @@ Los datos manuales se relacionan con productos únicamente por SKU, no por ID in
 - **Subcategoría:** División de segundo nivel dentro de una categoría (ej: INDUCCIONES, VITROCERAMICAS)
 - **Ficha:** Fila dentro de una subcategoría que contiene hasta 6 tarjetas de productos
 - **Tarjeta:** Representación visual de un producto dentro de una ficha, asociada a una marca específica
+- **Plantilla de Tarjeta:** Configuración que define qué campos y atributos se muestran en las tarjetas de productos
+- **Plantilla Genérica:** Configuración de visualización que se aplica a todas las subcategorías de una categoría sin configuración específica
+- **Atributo:** Característica técnica de un producto (ej: Potencia, Capacidad, Clase energética)
 - **SKU (Stock Keeping Unit):** Código único que identifica un producto
 - **EAN:** Código de barras europeo del producto
 - **Atributo:** Característica técnica de un producto (ej: Potencia, Capacidad, Dimensiones)
@@ -928,7 +1014,8 @@ Este documento describe de manera exhaustiva los requerimientos funcionales del 
 
 ---
 
-**Versión:** 1.0  
+**Versión:** 1.1  
 **Fecha:** 30 de enero de 2026  
 **Autor:** Generado por análisis del código fuente  
-**Estado:** Documento Completo
+**Estado:** Documento Completo  
+**Última actualización:** Agregado sistema de plantillas dinámicas de tarjetas (RF-023-A, RF-023-B)

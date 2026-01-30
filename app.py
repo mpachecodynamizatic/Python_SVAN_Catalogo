@@ -321,6 +321,40 @@ def index():
     catalogos = Catalogo.query.all()
     return render_template('index.html', catalogos=catalogos)
 
+@app.route('/categorias')
+@login_required
+def categorias():
+    """
+    Listado de todas las categorías con información sobre plantillas predeterminadas
+    """
+    from sqlalchemy import func
+    
+    # Obtener todas las categorías
+    categorias = Categoria.query.order_by(Categoria.cod_categoria).all()
+    
+    categorias_data = []
+    for cat in categorias:
+        # Contar subcategorías
+        num_subcategorias = Subcategoria.query.filter_by(categoria_id=cat.id).count()
+        
+        # Verificar si tiene plantilla genérica (independiente del catálogo)
+        tiene_plantilla = PlantillaTarjeta.query.filter_by(
+            categoria_id=cat.id,
+            subcategoria_id=None,
+            catalogo_id=None,
+            es_generica=True
+        ).first() is not None
+        
+        categorias_data.append({
+            'categoria': cat,
+            'num_subcategorias': num_subcategorias,
+            'tiene_plantilla': tiene_plantilla
+        })
+    
+    return render_template('categorias.html', 
+                         categorias_data=categorias_data,
+                         total_categorias=len(categorias))
+
 @app.route('/productos')
 @login_required
 def productos():
@@ -1038,6 +1072,7 @@ def copiar_catalogo():
     return redirect(url_for('index'))
 
 @app.route('/delete/<int:id>')
+@login_required
 def delete_catalogo(id):
     catalogo = Catalogo.query.get_or_404(id)
     # Eliminar en cascada
@@ -1051,6 +1086,7 @@ def delete_catalogo(id):
         db.session.delete(categoria)
     db.session.delete(catalogo)
     db.session.commit()
+    flash(f'Catálogo {catalogo.codigo} eliminado correctamente', 'success')
     return redirect(url_for('index'))
 
 @app.route('/ver_catalogo_completo/<int:catalogo_id>')
@@ -1461,8 +1497,13 @@ def obtener_plantilla_activa(subcategoria_id):
             'atributos_seleccionados': json.loads(plantilla.atributos_seleccionados)
         }
     
-    # Buscar plantilla de categoría
-    plantilla = PlantillaTarjeta.query.filter_by(categoria_id=subcategoria.categoria_id, subcategoria_id=None).first()
+    # Buscar plantilla genérica de categoría (independiente del catálogo)
+    plantilla = PlantillaTarjeta.query.filter_by(
+        categoria_id=subcategoria.categoria_id, 
+        subcategoria_id=None,
+        catalogo_id=None,
+        es_generica=True
+    ).first()
     if plantilla:
         return {
             'campos_ficha': json.loads(plantilla.campos_ficha),
@@ -1574,6 +1615,71 @@ def guardar_plantilla_tarjeta():
                 atributos_seleccionados=json.dumps(atributos_seleccionados),
                 es_generica=False
             )
+        
+        db.session.add(plantilla)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Plantilla guardada correctamente'})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/obtener_plantilla_categoria/<int:categoria_id>')
+@login_required
+def obtener_plantilla_categoria(categoria_id):
+    """
+    Obtiene la plantilla genérica de una categoría (independiente del catálogo)
+    """
+    plantilla = PlantillaTarjeta.query.filter_by(
+        categoria_id=categoria_id,
+        subcategoria_id=None,
+        catalogo_id=None,
+        es_generica=True
+    ).first()
+    
+    if plantilla:
+        return jsonify({
+            'campos_ficha': json.loads(plantilla.campos_ficha),
+            'atributos_seleccionados': json.loads(plantilla.atributos_seleccionados)
+        })
+    else:
+        # Retornar configuración por defecto
+        return jsonify({
+            'campos_ficha': ['sku', 'titulo', 'ean', 'estado_referencia', 'color'],
+            'atributos_seleccionados': []
+        })
+
+@app.route('/guardar_plantilla_categoria', methods=['POST'])
+@login_required
+def guardar_plantilla_categoria():
+    """
+    Guarda la configuración de plantilla predeterminada para una categoría
+    """
+    try:
+        data = request.get_json()
+        categoria_id = data.get('categoria_id')
+        campos_ficha = data.get('campos_ficha', ['sku', 'titulo', 'ean', 'estado_referencia', 'color'])
+        atributos_seleccionados = data.get('atributos_seleccionados', [])
+        
+        categoria = Categoria.query.get_or_404(categoria_id)
+        
+        # Eliminar plantilla genérica anterior si existe
+        PlantillaTarjeta.query.filter_by(
+            categoria_id=categoria_id,
+            subcategoria_id=None,
+            catalogo_id=None,
+            es_generica=True
+        ).delete()
+        
+        # Crear nueva plantilla genérica (independiente del catálogo)
+        plantilla = PlantillaTarjeta(
+            catalogo_id=None,
+            categoria_id=categoria_id,
+            subcategoria_id=None,
+            campos_ficha=json.dumps(campos_ficha),
+            atributos_seleccionados=json.dumps(atributos_seleccionados),
+            es_generica=True
+        )
         
         db.session.add(plantilla)
         db.session.commit()
